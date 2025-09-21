@@ -29,11 +29,29 @@ import AnnouncementsRoutes from "./routes/IT22196460_Routes/AnnouncementsRoutes.
 import cors from "cors";
 import EstimationRoutes_01 from './routes/IT22607232_Routes/EstimationRoutes_01.js';
 import carparkListingRoutes from './routes/IT22561466_Routes/carparkListing.route.js';
+// Security middleware import
+import helmet from "helmet";
+import { cspConfig, hiddenFileProtection, additionalSecurityHeaders } from "./utils/security.js";
 
 import StaffRegisterRoutes from "./routes/IT22603418_Routes/StaffRegister.route_04.js";
 dotenv.config();
 
 const app = express();
+
+// ============ SECURITY MIDDLEWARE ============
+// 1. SECURITY FIX: Content Security Policy (CSP) Header using Helmet
+// Protects against XSS, code injection, and other attacks
+app.use(helmet(cspConfig));
+
+// 2. SECURITY FIX: Hidden File Disclosure Prevention
+// Blocks access to .DS_Store, .git, .env, backup files, etc.
+app.use(hiddenFileProtection);
+
+// 3. Additional security headers
+app.use(additionalSecurityHeaders);
+
+// ============ END SECURITY MIDDLEWARE ============
+
 app.use(express.json());
 app.use(cookieParser());
 // Use the cors middleware
