@@ -35,7 +35,10 @@ import {
   cspConfig,
   hiddenFileProtection,
   additionalSecurityHeaders,
+  corsConfig,
+  corsErrorHandler,
 } from "./utils/security.js";
+import { logSecurityConfig } from "./utils/securityConfig.js";
 
 import StaffRegisterRoutes from "./routes/IT22603418_Routes/StaffRegister.route_04.js";
 dotenv.config();
@@ -44,24 +47,32 @@ const app = express();
 
 // ============ SECURITY MIDDLEWARE ============
 // 1. SECURITY FIX: Content Security Policy (CSP) Header using Helmet
-// Protects against XSS, code injection, and other attacks
+// Protects against XSS, code injection, and clickjacking attacks
 app.use(helmet(cspConfig));
 
 // 2. SECURITY FIX: Hidden File Disclosure Prevention
 // Blocks access to .DS_Store, .git, .env, backup files, etc.
 app.use(hiddenFileProtection);
 
-// 3. Additional security headers
+// 3. Additional security headers (enhanced clickjacking protection)
 app.use(additionalSecurityHeaders);
 
 // ============ END SECURITY MIDDLEWARE ============
 
 app.use(express.json());
 app.use(cookieParser());
-// Use the cors middleware
-app.use(cors());
+
+// SECURITY FIX: CORS Configuration with Origin Whitelist
+// Only allows requests from trusted origins, blocks all others
+app.use(cors(corsConfig));
+
+// CORS Error Handler
+app.use(corsErrorHandler);
 
 dbConnection();
+
+// Log security configuration
+logSecurityConfig();
 
 app.listen(3000, () => {
   console.log("Server is running on http://localhost:3000");

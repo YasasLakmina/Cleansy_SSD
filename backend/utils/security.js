@@ -1,9 +1,55 @@
 // ============ SECURITY UTILITIES ============
 // This file contains security-related configurations and middleware
 
+import { getAllowedOrigins } from "./securityConfig.js";
+
+/**
+ * CORS Configuration
+ * Defines which origins are allowed to make requests to the API
+ */
+export const corsConfig = {
+  origin: function (origin, callback) {
+    // Get allowed origins from environment configuration
+    const allowedOrigins = getAllowedOrigins();
+
+    // Allow requests with no origin (mobile apps, curl, Postman, etc.)
+    if (!origin) return callback(null, true);
+
+    // Check if the origin is in the allowed list
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.warn(
+        `🚫 CORS: Blocked request from unauthorized origin: ${origin}`
+      );
+      console.warn(`   Allowed origins: ${allowedOrigins.join(", ")}`);
+      callback(new Error("Not allowed by CORS policy"), false);
+    }
+  },
+
+  // Allow credentials (cookies, authorization headers)
+  credentials: true,
+
+  // Specify allowed methods
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+
+  // Specify allowed headers
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "Accept",
+    "Origin",
+  ],
+
+  // Cache preflight requests for 24 hours
+  maxAge: 86400,
+};
+
 /**
  * Content Security Policy (CSP) Configuration
  * Defines what resources can be loaded and from where
+ * Now includes frame-ancestors for clickjacking protection
  */
 export const cspConfig = {
   contentSecurityPolicy: {
@@ -60,11 +106,16 @@ export const cspConfig = {
         "https://localhost:*",
       ],
 
-      // Frames: Prevent embedding except from self
-      frameSrc: ["'self'"],
+      // SECURITY FIX: Clickjacking Protection via CSP
+      // Prevent the page from being embedded in frames/iframes
+      frameSrc: ["'none'"],
+      frameAncestors: ["'none'"],
 
       // Base URI: Prevent injection of base tags
       baseUri: ["'self'"],
+
+      // Form action: Only allow forms to submit to same origin
+      formAction: ["'self'"],
     },
   },
 
@@ -191,17 +242,27 @@ export const additionalSecurityHeaders = (req, res, next) => {
   // Prevent MIME type sniffing
   res.setHeader("X-Content-Type-Options", "nosniff");
 
-  // Prevent clickjacking
+  // SECURITY FIX: Enhanced Clickjacking Protection
+  // X-Frame-Options header (legacy support)
   res.setHeader("X-Frame-Options", "DENY");
 
   // Enable XSS filtering
   res.setHeader("X-XSS-Protection", "1; mode=block");
 
+  // Referrer Policy: Control how much referrer information is shared
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+
+  // Permissions Policy: Control browser features
+  res.setHeader(
+    "Permissions-Policy",
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+  );
+
   // Strict Transport Security (use only if serving over HTTPS)
   if (req.secure || req.headers["x-forwarded-proto"] === "https") {
     res.setHeader(
       "Strict-Transport-Security",
-      "max-age=31536000; includeSubDomains"
+      "max-age=31536000; includeSubDomains; preload"
     );
   }
 
@@ -209,4 +270,22 @@ export const additionalSecurityHeaders = (req, res, next) => {
   res.removeHeader("X-Powered-By");
 
   next();
+};
+
+/**
+ * CORS Error Handler
+ * Custom error handler for CORS-related errors
+ */
+export const corsErrorHandler = (err, req, res, next) => {
+  if (err.message && err.message.includes("CORS")) {
+    console.warn(
+      `CORS Error: ${err.message} for origin: ${req.headers.origin}`
+    );
+    return res.status(403).json({
+      error: "CORS Policy Violation",
+      message: "Origin not allowed by CORS policy",
+      origin: req.headers.origin,
+    });
+  }
+  next(err);
 };
