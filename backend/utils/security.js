@@ -262,13 +262,6 @@ export const createCspConfig = (
         // Build environment-appropriate directives
         const directives = buildCspDirectives(isProd, nonce);
 
-        // Debug log to ensure directives are being generated
-        console.log(
-          "🔒 CSP Directives generated:",
-          Object.keys(directives).length,
-          "directives"
-        );
-
         return directives;
       },
       reportOnly: false, // Set to true for testing, false for enforcement

@@ -96,7 +96,7 @@ dbConnection();
 logSecurityConfig();
 
 app.listen(3000, () => {
-  console.log("Server is running on http://localhost:3000");
+  console.log("Server running on http://localhost:3000");
 });
 
 app.get("/", (req, res) => {
@@ -194,15 +194,10 @@ app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
   const message = err.message || "Internal Server Error";
 
-  // Log error for debugging (don't expose sensitive info to client)
-  console.error("Server Error:", {
-    statusCode,
-    message: err.message,
-    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
-    path: req.path,
-    method: req.method,
-    ip: req.ip,
-  });
+  // Log error for debugging (simplified in production)
+  if (process.env.NODE_ENV === "development") {
+    console.error(`Error ${statusCode}:`, message);
+  }
 
   res.status(statusCode).json({
     success: false,
