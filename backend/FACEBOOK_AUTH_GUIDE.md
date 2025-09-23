@@ -18,9 +18,9 @@
 
 ```bash
 # Already in your .env file:
-FACEBOOK_CLIENT_ID=1498545231476837
-FACEBOOK_CLIENT_SECRET=0f11bad386e21b18590b13ff57ab1223
-JWT_SECRET=syntaxcleansysquad2024itpproject
+FACEBOOK_CLIENT_ID=
+FACEBOOK_CLIENT_SECRET=
+JWT_SECRET=
 
 # Optional: Frontend URL for redirects
 CLIENT_URL=http://localhost:5173

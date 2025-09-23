@@ -50,9 +50,9 @@ GET /api/user/me               # Verify authentication
 ## Environment Variables
 
 ```bash
-FACEBOOK_CLIENT_ID=1498545231476837
-FACEBOOK_CLIENT_SECRET=0f11bad386e21b18590b13ff57ab1223
-JWT_SECRET=syntaxcleansysquad2024itpproject
+FACEBOOK_CLIENT_ID=
+FACEBOOK_CLIENT_SECRET=
+JWT_SECRET=
 CLIENT_URL=http://localhost:5173
 ```
 
