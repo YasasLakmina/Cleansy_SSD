@@ -1,6 +1,7 @@
 import express from "express";
 import {
   deleteUser,
+  getCurrentUser,
   getUserDetails,
   getUsers,
   signout,
@@ -15,6 +16,7 @@ import { getVisitorListings } from "../controllers/IT22561466_Controllers/visito
 const router = express.Router();
 
 router.get("/test", test);
+router.get("/me", verifyToken, getCurrentUser);
 router.put("/update/:userId", verifyToken, updateUser);
 router.delete("/delete/:userId", verifyToken, deleteUser);
 router.post("/signout", signout);

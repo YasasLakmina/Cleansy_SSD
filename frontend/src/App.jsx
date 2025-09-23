@@ -3,6 +3,7 @@ import Home from "./pages/Home";
 import About from "./pages/About";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
+import AuthSuccess from "./pages/AuthSuccess";
 import Projects from "./pages/Projects";
 import Header from "./components/Header";
 import { ToastContainer } from "react-toastify";
@@ -46,37 +47,35 @@ import BookingUpdate_05 from "./pages/IT22003546_Pages/BookingUpdate_05";
 import ResidentServiceView from "./components/IT22350114_Components/ServiceResidentView_06";
 import DashServiceList_06 from "./components/IT22350114_Components/DashServiceList_06";
 import FinalAdminPayments_03 from "./pages/IT22602978_Pages/FinalAdminPayments_03";
-import BookServiceCreate from './pages/IT22350114_Pages/BookServiceCreate_06';
+import BookServiceCreate from "./pages/IT22350114_Pages/BookServiceCreate_06";
 import SignInQR from "./pages/IT22602978_Pages/SignInQR_03";
-import PayNowpage_03 from './pages/IT22602978_Pages/PayNowpage_03';
+import PayNowpage_03 from "./pages/IT22602978_Pages/PayNowpage_03";
 
-import DashServiceBookList_06 from './components/IT22350114_Components/DashServiceBookList_06';
-import ServiceUpdate_06 from './pages/IT22350114_Pages/ServiceUpdate_06';
+import DashServiceBookList_06 from "./components/IT22350114_Components/DashServiceBookList_06";
+import ServiceUpdate_06 from "./pages/IT22350114_Pages/ServiceUpdate_06";
 import UpdateVisitorListing from "./pages/IT22561466_Pages/UpdateVisitorListing";
 import VisitorDetails from "./pages/IT22561466_Pages/VisitorDetails";
 import UserCoversation_02 from "./components/IT22577160_Components/UserCoversation_02";
-import TaskTracker_01 from './components/IT22607232_Components/TaskTracker_01'
-import  WorkEstimation_01 from './pages/IT22607232_Pages/WorkEstimation_01'
-import announcementList from './components/IT22196460_Components/announcementList';
-import DeleteAnnouncementform from './components/IT22196460_Components/DeleteAnnouncementform';
-import AnnouncementForAdmin from './components/IT22196460_Components/AnnouncementForAdmin';
-import AnnouncementList from './pages/IT22196460_Pages/AnnouncementList';
-import UpdateAnnouncementForm from './pages/IT22196460_Pages/UpdateAnnouncementForm';
-import AnnouncementDetails from './pages/IT22196460_Pages/AnnouncementDetails';
-import CreateAnnouncementForm from './pages/IT22196460_Pages/CreateAnnouncementForm';
-import AnnouncementPage from './components/IT22196460_Components/AnnouncementPage';
-import EstimationOne_01 from './pages/IT22607232_Pages/EstimationOne_01';
-import WorkEstimate_01 from './pages/IT22607232_Pages/WorkEstimate_01';
+import TaskTracker_01 from "./components/IT22607232_Components/TaskTracker_01";
+import WorkEstimation_01 from "./pages/IT22607232_Pages/WorkEstimation_01";
+import announcementList from "./components/IT22196460_Components/announcementList";
+import DeleteAnnouncementform from "./components/IT22196460_Components/DeleteAnnouncementform";
+import AnnouncementForAdmin from "./components/IT22196460_Components/AnnouncementForAdmin";
+import AnnouncementList from "./pages/IT22196460_Pages/AnnouncementList";
+import UpdateAnnouncementForm from "./pages/IT22196460_Pages/UpdateAnnouncementForm";
+import AnnouncementDetails from "./pages/IT22196460_Pages/AnnouncementDetails";
+import CreateAnnouncementForm from "./pages/IT22196460_Pages/CreateAnnouncementForm";
+import AnnouncementPage from "./components/IT22196460_Components/AnnouncementPage";
+import EstimationOne_01 from "./pages/IT22607232_Pages/EstimationOne_01";
+import WorkEstimate_01 from "./pages/IT22607232_Pages/WorkEstimate_01";
 import VisitorAdminPage from "./pages/IT22561466_Pages/VisitorAdminPage";
-import searchVisitor from './pages/IT22561466_Pages/VisitorAdminPage'
+import searchVisitor from "./pages/IT22561466_Pages/VisitorAdminPage";
 import SearchVisitors from "./pages/IT22561466_Pages/SearchVisitors";
 import RequestCarPark from "./pages/IT22561466_Pages/RequestCarPark";
 import Parkingslot from "./pages/IT22561466_Pages/Parkingslot";
 import ParkingslotOrder from "./pages/IT22561466_Pages/ParkingslotOrder";
 import ServiceBookingUpdate_06 from "./pages/IT22350114_Pages/ServiceBookingUpdate_96";
 import CarParkAdminPage from "./pages/IT22561466_Pages/CarParkAdminPage";
-
-
 
 function App() {
   return (
@@ -90,7 +89,8 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
             <Route path="/sign-in" element={<SignIn />} />
-            <Route path="/sign-in-QR"element={<SignInQR/>}/>
+            <Route path="/auth/success" element={<AuthSuccess />} />
+            <Route path="/sign-in-QR" element={<SignInQR />} />
             <Route path="/sign-up" element={<SignUp />} />
             <Route path="/search" element={<SearchVisitors />} />
             <Route element={<PrivateRoute />}>
@@ -166,18 +166,25 @@ function App() {
                 path="/service-User:serviceID"
                 element={<ResidentServiceView />}
               />
-              
+
               <Route
                 path="/pay-now/:HouseIdQR/:PaymentIdQR"
-                element={<PayNowpage_03/>}
-                />
+                element={<PayNowpage_03 />}
+              />
 
-              
-              
-              <Route path="/service-booking-List:bookingID" element={<DashServiceBookList_06 />}/>
-            
-              <Route path="/service-update/:serviceID" element={<ServiceUpdate_06 />} />
-              <Route path="/update-sbooking/:bookingID" element={<ServiceBookingUpdate_06 />} />
+              <Route
+                path="/service-booking-List:bookingID"
+                element={<DashServiceBookList_06 />}
+              />
+
+              <Route
+                path="/service-update/:serviceID"
+                element={<ServiceUpdate_06 />}
+              />
+              <Route
+                path="/update-sbooking/:bookingID"
+                element={<ServiceBookingUpdate_06 />}
+              />
               <Route
                 path="/visitorListing/:visitorListingId"
                 element={<VisitorDetails />}
@@ -186,8 +193,11 @@ function App() {
                 path="/update-list/:visitorListingId"
                 element={<UpdateVisitorListing />}
               />
-              <Route path="/conversation/:conversationId" element={<UserCoversation_02 />}/>
-                 <Route path="/car-park" element={<RequestCarPark />} />
+              <Route
+                path="/conversation/:conversationId"
+                element={<UserCoversation_02 />}
+              />
+              <Route path="/car-park" element={<RequestCarPark />} />
             </Route>
             <Route element={<OnlyPropertyAdminPrivateRoute_02 />}>
               <Route
@@ -223,24 +233,44 @@ function App() {
               path="/update-paymentprofile/:data"
               element={<Updatepaymentpage_03 />}
             />
-                 <Route path="/task-tracker" element={<TaskTracker_01/>} />
-                <Route path="/task-estimate" element={<WorkEstimation_01/>} />
-              <Route exact path="/create-announcement" element={<CreateAnnouncementForm/>}/>
-              <Route path="/" element={<AnnouncementList/>}/>
-              <Route path="/announcement/:id" element={<AnnouncementDetails/>}/>
-              <Route path="/delete-announcement/:id" element={<DeleteAnnouncementform/>}/>
-              <Route exact path="/announcements" element={<AnnouncementForAdmin/>}/>
-              <Route path="/announcements" element={<AnnouncementPage/>}/>
-              <Route exact path="/update-announcement/:id" element={<UpdateAnnouncementForm/>}/>
-              <Route path="/estimation" element={<EstimationOne_01/>} />
-              <Route path="/get-estimation/:taskid" element={<WorkEstimate_01/>} />
+            <Route path="/task-tracker" element={<TaskTracker_01 />} />
+            <Route path="/task-estimate" element={<WorkEstimation_01 />} />
+            <Route
+              exact
+              path="/create-announcement"
+              element={<CreateAnnouncementForm />}
+            />
+            <Route path="/" element={<AnnouncementList />} />
+            <Route path="/announcement/:id" element={<AnnouncementDetails />} />
+            <Route
+              path="/delete-announcement/:id"
+              element={<DeleteAnnouncementform />}
+            />
+            <Route
+              exact
+              path="/announcements"
+              element={<AnnouncementForAdmin />}
+            />
+            <Route path="/announcements" element={<AnnouncementPage />} />
+            <Route
+              exact
+              path="/update-announcement/:id"
+              element={<UpdateAnnouncementForm />}
+            />
+            <Route path="/estimation" element={<EstimationOne_01 />} />
+            <Route
+              path="/get-estimation/:taskid"
+              element={<WorkEstimate_01 />}
+            />
 
             <Route path="/admin-page" element={<VisitorAdminPage />} />
             <Route path="/searchVisitor" element={<VisitorAdminPage />} />
             <Route path="/park-slot/:slotID" element={<Parkingslot />} />
-            <Route path="/park-slot-order/:carparkListingId" element={<ParkingslotOrder />} />
-            <Route path="/carpark-admin-page" element={<CarParkAdminPage/>}/>
-            
+            <Route
+              path="/park-slot-order/:carparkListingId"
+              element={<ParkingslotOrder />}
+            />
+            <Route path="/carpark-admin-page" element={<CarParkAdminPage />} />
           </Routes>
         </div>
 

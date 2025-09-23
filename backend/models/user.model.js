@@ -21,6 +21,12 @@ const UserSchema = new mongoose.Schema(
       default:
         "https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png",
     },
+    // Social authentication
+    facebookId: {
+      type: String,
+      unique: true,
+      sparse: true, // Allows multiple null values
+    },
     isAdmin: {
       type: Boolean,
       default: false,

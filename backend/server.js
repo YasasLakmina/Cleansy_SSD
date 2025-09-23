@@ -1,5 +1,19 @@
 import express from "express";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Get directory path for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from root directory
+dotenv.config({ path: path.join(__dirname, "../.env") });
+
+// Configure Facebook OAuth strategy after environment variables are loaded
+import { configureFacebookStrategy } from "./utils/passport.js";
+configureFacebookStrategy();
+
 import dbConnection from "./dbConfig/dbConnection.js";
 import userRoutes from "./routes/user.route.js";
 import authRoutes from "./routes/auth.route.js";
@@ -42,7 +56,6 @@ import {
 import { logSecurityConfig } from "./utils/securityConfig.js";
 
 import StaffRegisterRoutes from "./routes/IT22603418_Routes/StaffRegister.route_04.js";
-dotenv.config();
 
 const app = express();
 

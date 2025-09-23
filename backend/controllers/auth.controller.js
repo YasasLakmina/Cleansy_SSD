@@ -2,6 +2,7 @@ import bcryptjs from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 import { errorHandler } from "../utils/error.js";
+import passport from "../utils/passport.js";
 
 // sign up API
 export const signup = async (req, res, next) => {
@@ -86,49 +87,194 @@ export const signIn = async (req, res, next) => {
 
 // google sign in API
 export const google = async (req, res, next) => {
-   const { email, name, googlePhotoURL } = req.body;
-   try {
-      const user = await User.findOne({ email });
-      if(user) {
-         const token = jwt.sign({ id: user._id, Username:user.username,isAdmin: user.isAdmin, isUserAdmin: user.isUserAdmin, isPropertyAdmin: user.isPropertyAdmin, isVisitorAdmin: user.isVisitorAdmin, isAnnouncementAdmin: user.isAnnouncementAdmin, isBookingAdmin: user.isBookingAdmin, isStaffAdmin: user.isStaffAdmin, isBillingAdmin: user.isBillingAdmin, isFacilityAdmin: user.isFacilityAdmin, isFacilityServiceAdmin: user.isFacilityServiceAdmin }, process.env.JWT_SECRET);
-         const { password, ...rest } = user._doc;
-         res.status(200).cookie('access_token', token, {
-            httpOnly: true,
-         }).json(rest);
-      } else {
-         const generatedPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
-         const hashedPassword = bcryptjs.hashSync(generatedPassword, 10);
-         const newUser = new User({
-            username: name.toLowerCase().split(' ').join('') + Math.random().toString(9).slice(-4),
-            email,
-            password: hashedPassword,
-            profilePicture: googlePhotoURL,
-         });
-         await newUser.save();
-         const token = jwt.sign({ id: newUser._id, Username:newUser.username,isAdmin: newUser.isAdmin, isUserAdmin: newUser.isUserAdmin, isPropertyAdmin: newUser.isPropertyAdmin, isVisitorAdmin: newUser.isVisitorAdmin, isAnnouncementAdmin: newUser.isAnnouncementAdmin, isBookingAdmin: newUser.isBookingAdmin, isStaffAdmin: newUser.isStaffAdmin, isBillingAdmin: newUser.isBillingAdmin, isFacilityAdmin: newUser.isFacilityAdmin, isFacilityServiceAdmin: newUser.isFacilityServiceAdmin }, process.env.JWT_SECRET);
-         const { password, ...rest } = newUser._doc;
-         res.status(200).cookie('access_token', token, {
-            httpOnly: true,
-         }).json(rest);
-      }
-   } catch (error) {
-      next(error);
-   }
-}
-
+  const { email, name, googlePhotoURL } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (user) {
+      const token = jwt.sign(
+        {
+          id: user._id,
+          Username: user.username,
+          isAdmin: user.isAdmin,
+          isUserAdmin: user.isUserAdmin,
+          isPropertyAdmin: user.isPropertyAdmin,
+          isVisitorAdmin: user.isVisitorAdmin,
+          isAnnouncementAdmin: user.isAnnouncementAdmin,
+          isBookingAdmin: user.isBookingAdmin,
+          isStaffAdmin: user.isStaffAdmin,
+          isBillingAdmin: user.isBillingAdmin,
+          isFacilityAdmin: user.isFacilityAdmin,
+          isFacilityServiceAdmin: user.isFacilityServiceAdmin,
+        },
+        process.env.JWT_SECRET
+      );
+      const { password, ...rest } = user._doc;
+      res
+        .status(200)
+        .cookie("access_token", token, {
+          httpOnly: true,
+        })
+        .json(rest);
+    } else {
+      const generatedPassword =
+        Math.random().toString(36).slice(-8) +
+        Math.random().toString(36).slice(-8);
+      const hashedPassword = bcryptjs.hashSync(generatedPassword, 10);
+      const newUser = new User({
+        username:
+          name.toLowerCase().split(" ").join("") +
+          Math.random().toString(9).slice(-4),
+        email,
+        password: hashedPassword,
+        profilePicture: googlePhotoURL,
+      });
+      await newUser.save();
+      const token = jwt.sign(
+        {
+          id: newUser._id,
+          Username: newUser.username,
+          isAdmin: newUser.isAdmin,
+          isUserAdmin: newUser.isUserAdmin,
+          isPropertyAdmin: newUser.isPropertyAdmin,
+          isVisitorAdmin: newUser.isVisitorAdmin,
+          isAnnouncementAdmin: newUser.isAnnouncementAdmin,
+          isBookingAdmin: newUser.isBookingAdmin,
+          isStaffAdmin: newUser.isStaffAdmin,
+          isBillingAdmin: newUser.isBillingAdmin,
+          isFacilityAdmin: newUser.isFacilityAdmin,
+          isFacilityServiceAdmin: newUser.isFacilityServiceAdmin,
+        },
+        process.env.JWT_SECRET
+      );
+      const { password, ...rest } = newUser._doc;
+      res
+        .status(200)
+        .cookie("access_token", token, {
+          httpOnly: true,
+        })
+        .json(rest);
+    }
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const signInQR = async (req, res, next) => {
-   const { email } = req.body;
-   try {
-      const user = await User.findOne({ email });
-      
-         const token = jwt.sign({ id: user._id, Username:user.username,isAdmin: user.isAdmin, isUserAdmin: user.isUserAdmin, isPropertyAdmin: user.isPropertyAdmin, isVisitorAdmin: user.isVisitorAdmin, isAnnouncementAdmin: user.isAnnouncementAdmin, isBookingAdmin: user.isBookingAdmin, isStaffAdmin: user.isStaffAdmin, isBillingAdmin: user.isBillingAdmin, isFacilityAdmin: user.isFacilityAdmin, isFacilityServiceAdmin: user.isFacilityServiceAdmin }, process.env.JWT_SECRET);
-         const { password, ...rest } = user._doc;
-         res.status(200).cookie('access_token', token, {
-            httpOnly: true,
-         }).json(rest);
-      
-   } catch (error) {
-      next(error);
-   }
-}
+  const { email } = req.body;
+  try {
+    const user = await User.findOne({ email });
+
+    const token = jwt.sign(
+      {
+        id: user._id,
+        Username: user.username,
+        isAdmin: user.isAdmin,
+        isUserAdmin: user.isUserAdmin,
+        isPropertyAdmin: user.isPropertyAdmin,
+        isVisitorAdmin: user.isVisitorAdmin,
+        isAnnouncementAdmin: user.isAnnouncementAdmin,
+        isBookingAdmin: user.isBookingAdmin,
+        isStaffAdmin: user.isStaffAdmin,
+        isBillingAdmin: user.isBillingAdmin,
+        isFacilityAdmin: user.isFacilityAdmin,
+        isFacilityServiceAdmin: user.isFacilityServiceAdmin,
+      },
+      process.env.JWT_SECRET
+    );
+    const { password, ...rest } = user._doc;
+    res
+      .status(200)
+      .cookie("access_token", token, {
+        httpOnly: true,
+      })
+      .json(rest);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Facebook Authentication
+
+/**
+ * Generate JWT token with user information
+ * @param {Object} user - User object from database
+ * @returns {string} JWT token
+ */
+const generateJWTToken = (user) => {
+  return jwt.sign(
+    {
+      id: user._id,
+      Username: user.username,
+      isAdmin: user.isAdmin,
+      isUserAdmin: user.isUserAdmin,
+      isPropertyAdmin: user.isPropertyAdmin,
+      isVisitorAdmin: user.isVisitorAdmin,
+      isAnnouncementAdmin: user.isAnnouncementAdmin,
+      isBookingAdmin: user.isBookingAdmin,
+      isStaffAdmin: user.isStaffAdmin,
+      isBillingAdmin: user.isBillingAdmin,
+      isFacilityAdmin: user.isFacilityAdmin,
+      isFacilityServiceAdmin: user.isFacilityServiceAdmin,
+      isStaff: user.isStaff,
+    },
+    process.env.JWT_SECRET
+  );
+};
+
+/**
+ * Initiate Facebook authentication
+ * Redirects user to Facebook login page
+ */
+export const facebookAuth = passport.authenticate("facebook", {
+  scope: ["email"],
+});
+
+/**
+ * Handle Facebook authentication callback
+ * Process the response from Facebook and issue JWT token
+ */
+export const facebookCallback = (req, res, next) => {
+  passport.authenticate(
+    "facebook",
+    { session: false },
+    async (err, user, info) => {
+      try {
+        if (err) {
+          return res.status(500).json({
+            success: false,
+            message: "Facebook authentication failed",
+            error: err.message,
+          });
+        }
+
+        if (!user) {
+          return res.status(401).json({
+            success: false,
+            message: "Facebook authentication failed",
+          });
+        }
+
+        // Generate JWT token
+        const token = generateJWTToken(user);
+
+        // Remove password from response
+        const { password, ...userWithoutPassword } = user._doc;
+
+        // Set httpOnly cookie with JWT token
+        res.cookie("access_token", token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        });
+
+        // Redirect to frontend success page
+        return res.redirect(
+          `${process.env.CLIENT_URL || "http://localhost:5173"}/auth/success`
+        );
+      } catch (error) {
+        next(error);
+      }
+    }
+  )(req, res, next);
+};
