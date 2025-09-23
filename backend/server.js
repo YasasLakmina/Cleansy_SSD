@@ -167,12 +167,49 @@ app.use("/api/carparkListing", carparkListingRoutes);
 // IT22196460 Routes
 app.use("/api/announcements", AnnouncementsRoutes);
 
+// ============ SECURITY: 404 Handler with CSP Headers ============
+// Ensure 404 responses also include security headers
+app.use((req, res, next) => {
+  // For API routes, return JSON 404
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({
+      success: false,
+      statusCode: 404,
+      message: "API endpoint not found",
+      path: req.path,
+    });
+  }
+
+  // For non-API routes, return generic 404
+  res.status(404).json({
+    success: false,
+    statusCode: 404,
+    message: "Resource not found",
+  });
+});
+
+// ============ SECURITY: Error Handler with CSP Headers ============
+// Global error handler - security headers are already applied by helmet middleware
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
   const message = err.message || "Internal Server Error";
+
+  // Log error for debugging (don't expose sensitive info to client)
+  console.error("Server Error:", {
+    statusCode,
+    message: err.message,
+    stack: process.env.NODE_ENV === "development" ? err.stack : undefined,
+    path: req.path,
+    method: req.method,
+    ip: req.ip,
+  });
+
   res.status(statusCode).json({
     success: false,
     statusCode,
-    message,
+    message:
+      process.env.NODE_ENV === "development"
+        ? message
+        : "Internal Server Error",
   });
 });
