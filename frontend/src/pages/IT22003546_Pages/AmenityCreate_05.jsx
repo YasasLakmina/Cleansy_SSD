@@ -13,6 +13,25 @@ import {
     Alert,
     } from "flowbite-react";
 
+// Security helpers
+const MAX_IMAGES = 6;
+const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const isSafeUrl = (u) => {
+  try {
+    const url = new URL(u);
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+const sanitize = (s) => (typeof s === "string" ? s.replace(/[<>]/g, "") : s);
+const clampNumber = (n, min = 0, max = Number.MAX_SAFE_INTEGER) => {
+  const x = Number(n);
+  if (Number.isNaN(x)) return min;
+  return Math.max(min, Math.min(max, x));
+};
+
 const AmenityCreate = () => {
    
     // const fetchAmenity = async () => {
@@ -46,7 +65,7 @@ const AmenityCreate = () => {
         amenityDescription: '',
         imageURLs: [],
         amenityLocation: '',
-        amenityCapacity: 0,
+        amenityCapacity: 1,
         amenityAvailableTimes: '',
         amenityPrice: '',
         amenityStatus: "Unavailable",
@@ -60,48 +79,34 @@ const AmenityCreate = () => {
     const navigate = useNavigate();
 
     const handleChange = (e) => {
-        const { name, value, type } = e.target;
-    
-        
-        let processedValue = value;
-    
-        
-        if (value === "true" || value === "false") {
-            processedValue = value === "true";
-        }
-        
+      const { name, value, type } = e.target;
 
-        
-        if (name === "amenityPrice" && type === "number") {
-            if (parseFloat(value) < 0) {
-                console.log("Invalid input for Price: no negative values allowed.");
-                return; 
-            }
-        }
+      // normalize and sanitize string inputs
+      let processedValue = sanitize(value);
 
-        
-        if (name === "amenityCapacity" && type === "number") {
-            if (parseFloat(value) < 0) {
-                console.log("Invalid input for Capacity: no negative values allowed.");
-                return; 
-            }
-        }
+      // coerce booleans coming from selects if needed
+      if (processedValue === "true" || processedValue === "false") {
+        processedValue = processedValue === "true";
+      }
 
-        
-        if (name === "amenityTitle" && type === "text") {
-            const onlyLetters = /^[A-Za-z]+$/;  
-            if (!(value === "" || onlyLetters.test(value))) {
-                
-                console.log("Invalid input for Amenity Name: only letters are allowed.");
-                return; 
-            }
-        }
-    
-        
-        setFormData(prevState => ({
-            ...prevState,
-            [name]: processedValue
-        }));
+      // numeric constraints
+      if (type === "number") {
+        processedValue = clampNumber(processedValue, 0);
+      }
+
+      // extra guardrails per-field
+      if (name === "amenityTitle") {
+        // Allow letters, numbers, spaces, apostrophes and hyphens; keep spaces intact
+        processedValue = processedValue.replace(/[^A-Za-z0-9 '\-]/g, "");
+      } else if (name === "amenityAvailableTimes") {
+        // Only allow digits and colon characters
+        processedValue = processedValue.replace(/[^0-9:]/g, "");
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        [name]: processedValue,
+      }));
     };
     
     
@@ -109,28 +114,40 @@ const AmenityCreate = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            if(formData.imageURLs.length < 1) return setError('You must upload at least one image')
-            if (formData.amenityID === currentUser.amenityID) return setError('AmenityID already exists');
-            setLoading(true);
-            setError(false);
+          // basic client-side validation
+          if (formData.imageURLs.length < 1) return setError("You must upload at least one image");
+          if (!formData.amenityTitle || !formData.amenityDescription || !formData.amenityLocation) {
+            return setError("Please fill all required fields.");
+          }
+          if (clampNumber(formData.amenityCapacity, 1) < 1) {
+            return setError("Capacity must be at least 1.");
+          }
+          if (clampNumber(formData.amenityPrice, 0) < 0) {
+            return setError("Price cannot be negative.");
+          }
 
-            console.log(formData.amenityID, currentUser.AmenityID);
+          setLoading(true);
+          setError(false);
 
-            const payload = {
-                ...formData,
-                userRef: currentUser._id,
-                amenityStatus: "Unavailable",
-              };
+          const payload = {
+            amenityID: sanitize(formData.amenityID).trim(),
+            amenityTitle: sanitize(formData.amenityTitle).trim(),
+            amenityDescription: sanitize(formData.amenityDescription).trim(),
+            imageURLs: formData.imageURLs.filter(isSafeUrl),
+            amenityLocation: sanitize(formData.amenityLocation).trim(),
+            amenityCapacity: clampNumber(formData.amenityCapacity, 1),
+            amenityAvailableTimes: sanitize(formData.amenityAvailableTimes).trim(),
+            amenityPrice: clampNumber(formData.amenityPrice, 0),
+            amenityStatus: "Unavailable",
+            userRef: currentUser?._id,
+          };
         
-              console.log("Submitting the following data to the backend:", payload);
-        
-              const response = await fetch('/api/amenitiesListing/create', {
-                  method: 'POST',
-                  headers: {
-                      'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(payload)
-            });
+          const response = await fetch("/api/amenitiesListing/create", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              credentials: "include",
+              body: JSON.stringify(payload),
+          });
 
             const data = await response.json();
             setLoading(false);
@@ -146,55 +163,79 @@ const AmenityCreate = () => {
     };
 
     const handleImageSubmit = () => {
-        if(files.length > 0 && files.length + formData.imageURLs.length < 7) {
-           setUploading(true);
-           setImageUploadError(false);
-           const promises = [];
-  
-           for (let i = 0; i < files.length; i++) {
-              promises.push(storeImage(files[i]));
-           }
-  
-           Promise.all(promises).then((urls) => {
-              setFormData({
-                 ...formData,
-                 imageURLs: formData.imageURLs.concat(urls)
-              })
-              setImageUploadError(false);
-              setUploading(false);
-           }).catch((err) => {
-              setImageUploadError('Image Upload failed (2mb max per Image)');
-              setUploading(false);
-           })
-        } else {
-           setImageUploadError('You can only upload 6 Images per listing')
-           setUploading(false);
-        }
-     }
-  
-     const storeImage = async (file) => {
-        return new Promise((resolve, reject) => {
-           const storage = getStorage(app);
-           const fileName = new Date().getTime() + file.name;
-           const storageRef = ref(storage, fileName);
-           const uploadTask = uploadBytesResumable(storageRef, file);
-           uploadTask.on(
-              "state_changed",
-              (snapshot) => {
-                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                console.log(`Upload is ${progress}% done`);
-              },
-              (error) => {
-                reject(error);
-              },
-              () => {
-                getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-                  resolve(downloadURL);
-                })
-              }
-            )
+      // file selection present?
+      if (!files || files.length === 0) {
+        setImageUploadError("Please choose at least one image to upload");
+        return;
+      }
+      const total = files.length + formData.imageURLs.length;
+      if (total > MAX_IMAGES) {
+        setImageUploadError(`You can only upload ${MAX_IMAGES} images per listing`);
+        return;
+      }
+
+      // client-side validation for type and size
+      const invalid = Array.from(files).find(
+        (f) => !IMAGE_TYPES.includes(f.type) || f.size > MAX_IMAGE_SIZE_BYTES
+      );
+      if (invalid) {
+        setImageUploadError("Image upload failed (allowed types: JPG/PNG/WebP/GIF, max 2MB each)");
+        return;
+      }
+
+      setUploading(true);
+      setImageUploadError(false);
+      const promises = [];
+
+      for (let i = 0; i < files.length; i++) {
+        promises.push(storeImage(files[i]));
+      }
+
+      Promise.all(promises)
+        .then((urls) => {
+          const safeUrls = urls.filter(isSafeUrl);
+          setFormData((prev) => ({
+            ...prev,
+            imageURLs: prev.imageURLs.concat(safeUrls).slice(0, MAX_IMAGES),
+          }));
+          setImageUploadError(false);
+          setUploading(false);
         })
-     }
+        .catch(() => {
+          setImageUploadError("Image Upload failed (2MB max per Image)");
+          setUploading(false);
+        });
+    };
+  
+    const storeImage = async (file) => {
+      return new Promise((resolve, reject) => {
+        try {
+          // Validate again (defense-in-depth)
+          if (!IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_SIZE_BYTES) {
+            return reject(new Error("Invalid file"));
+          }
+          const storage = getStorage(app);
+          // random hex + timestamp as filename; avoid using user-provided file.name
+          const rand = crypto && crypto.getRandomValues ? [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(16).padStart(2, "0")).join("") : Math.random().toString(16).slice(2);
+          const ext = (file.name && file.name.lastIndexOf(".") > -1) ? file.name.slice(file.name.lastIndexOf(".")) : "";
+          const fileName = `${Date.now()}_${rand}${ext}`;
+          const storageRef = ref(storage, fileName);
+          const metadata = { contentType: file.type };
+          const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+
+          uploadTask.on(
+            "state_changed",
+            () => {},
+            (error) => reject(error),
+            () => {
+              getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => resolve(downloadURL));
+            }
+          );
+        } catch (err) {
+          reject(err);
+        }
+      });
+    };
   
      const handleRemoveImage = (index) => {
         setFormData({
@@ -228,6 +269,7 @@ const AmenityCreate = () => {
                             value={formData.amenityTitle}
                             onChange={handleChange}
                             required
+                            maxLength={60}
                         />
                     </div>
                     <div>
@@ -237,6 +279,7 @@ const AmenityCreate = () => {
                             value={formData.amenityDescription}
                             onChange={handleChange}
                             required
+                            maxLength={2000}
                         />
                     </div>
 
@@ -248,6 +291,7 @@ const AmenityCreate = () => {
                             value={formData.amenityLocation}
                             onChange={handleChange}
                             required
+                            maxLength={120}
                         />
                     </div>
                     
@@ -259,6 +303,8 @@ const AmenityCreate = () => {
                             value={formData.amenityCapacity}
                             onChange={handleChange}
                             required
+                            min={1}
+                            step={1}
                         />
                     </div>
 
@@ -270,6 +316,10 @@ const AmenityCreate = () => {
                             value={formData.amenityAvailableTimes}
                             onChange={handleChange}
                             required
+                            maxLength={120}
+                            inputMode="numeric"
+                            pattern="^[0-9:]*$"
+                            placeholder="Allowed characters: digits and ':' (e.g., 09:00:12:00)"
                         />
                     </div>
 
@@ -281,6 +331,8 @@ const AmenityCreate = () => {
                             value={formData.amenityPrice}
                             onChange={handleChange}
                             required
+                            min={0}
+                            step={0.01}
                         />
                     </div>
 
@@ -294,7 +346,7 @@ const AmenityCreate = () => {
                         {
                             formData.imageURLs.length > 0 && formData.imageURLs.map((url, index) => (
                                 <div key={`image-${index}`} className="flex justify-between p-3 border items-center">
-                                    <img src={url} alt={`listing image ${index}`} className='w-20 h-20 object-contain rounded-lg' />
+                                    <img src={isSafeUrl(url) ? url : ""} alt={`listing image ${index}`} className='w-20 h-20 object-contain rounded-lg' />
                                     <Button type="button" onClick={() => handleRemoveImage(index)} gradientDuoTone="pinkToOrange">Delete</Button>
                                 </div>
                             ))

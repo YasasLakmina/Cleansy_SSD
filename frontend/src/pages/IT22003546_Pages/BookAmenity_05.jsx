@@ -14,7 +14,38 @@ import {
   FileInput,
   Select,
 } from "flowbite-react";
+
 import { set } from "mongoose";
+
+// --- Security helpers (client-side) ---
+const MAX_IMAGES = 2; // UI says 2 Images Max
+const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+const isSafeUrl = (u) => {
+  try {
+    const url = new URL(u);
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const sanitize = (s) => (typeof s === "string" ? s.replace(/[<>]/g, "") : s); // don't trim while typing
+const clampNumber = (n, min = 0, max = Number.MAX_SAFE_INTEGER) => {
+  const x = Number(n);
+  if (Number.isNaN(x)) return min;
+  return Math.max(min, Math.min(max, x));
+};
+const randHex = (len = 16) => {
+  if (window.crypto && window.crypto.getRandomValues) {
+    const arr = new Uint8Array(len / 2);
+    window.crypto.getRandomValues(arr);
+    return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  return Math.random().toString(16).slice(2, 2 + len);
+};
+// --- End helpers ---
 
 const convertTimeRangeToArray = (timeRange) => {
   const [startTime, endTime] = timeRange.split('to').map(time => {
@@ -62,55 +93,71 @@ const BookAmenity = () => {
   });
 
   const handleImageSubmit = () => {
-    if(files.length > 0 && files.length + formData.imageUrls.length < 7) {
-       setUploading(true);
-       setImageUploadError(false);
-       const promises = [];
-
-       for (let i = 0; i < files.length; i++) {
-          promises.push(storeImage(files[i]));
-       }
-
-       Promise.all(promises).then((urls) => {
-          setFormData({
-             ...formData,
-             imageUrls: formData.imageUrls.concat(urls)
-          })
-          setImageUploadError(false);
-          setUploading(false);
-       }).catch((err) => {
-          setImageUploadError('Image Upload failed (2mb max per Image)');
-          setUploading(false);
-       })
-    } else {
-       setImageUploadError('You can only upload 6 Images per listing')
-       setUploading(false);
+    if (!files || files.length === 0) {
+      setImageUploadError("Please choose at least one image to upload");
+      return;
     }
- }
+    const total = files.length + formData.imageUrls.length;
+    if (total > MAX_IMAGES) {
+      setImageUploadError(`You can only upload ${MAX_IMAGES} Images per listing`);
+      return;
+    }
+    const invalid = Array.from(files).find(
+      (f) => !IMAGE_TYPES.includes(f.type) || f.size > MAX_IMAGE_SIZE_BYTES
+    );
+    if (invalid) {
+      setImageUploadError("Image upload failed (allowed: JPG/PNG/WebP/GIF, max 2MB each)");
+      return;
+    }
 
- const storeImage = async (file) => {
+    setUploading(true);
+    setImageUploadError(false);
+    const promises = [];
+    for (let i = 0; i < files.length; i++) {
+      promises.push(storeImage(files[i]));
+    }
+
+    Promise.all(promises)
+      .then((urls) => {
+        const safe = urls.filter(isSafeUrl);
+        setFormData((prev) => ({
+          ...prev,
+          imageUrls: prev.imageUrls.concat(safe).slice(0, MAX_IMAGES),
+        }));
+        setImageUploadError(false);
+        setUploading(false);
+      })
+      .catch(() => {
+        setImageUploadError("Image Upload failed (2MB max per Image)");
+        setUploading(false);
+      });
+  };
+
+  const storeImage = async (file) => {
     return new Promise((resolve, reject) => {
-       const storage = getStorage(app);
-       const fileName = new Date().getTime() + file.name;
-       const storageRef = ref(storage, fileName);
-       const uploadTask = uploadBytesResumable(storageRef, file);
-       uploadTask.on(
+      try {
+        if (!IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_SIZE_BYTES) {
+          return reject(new Error("Invalid file"));
+        }
+        const storage = getStorage(app);
+        const ext = file.name && file.name.lastIndexOf(".") > -1 ? file.name.slice(file.name.lastIndexOf(".")) : "";
+        const fileName = `${Date.now()}_${randHex(8)}${ext}`;
+        const storageRef = ref(storage, fileName);
+        const metadata = { contentType: file.type };
+        const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+        uploadTask.on(
           "state_changed",
-          (snapshot) => {
-            const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-            console.log(`Upload is ${progress}% done`);
-          },
-          (error) => {
-            reject(error);
-          },
+          () => {},
+          (error) => reject(error),
           () => {
-            getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-              resolve(downloadURL);
-            })
+            getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => resolve(downloadURL));
           }
-        )
-    })
- }
+        );
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
 
  const handleRemoveImage = (index) => {
     setFormData({
@@ -125,7 +172,7 @@ const BookAmenity = () => {
       const res = await fetch(`/api/amenitiesListing/get/${amenityId}`);
       const data = await res.json();
       if (data.success === false) {
-        console.error("Error fetching amenity details");
+        // swallow error for UI; optionally show a toast
         return;
       }
 
@@ -138,9 +185,6 @@ const BookAmenity = () => {
         pricePerHour: data.amenityPrice,
       }));
 
-      
-      
-
       const times = convertTimeRangeToArray(data.amenityAvailableTimes);
       setAvailableTimes(times);
       if (times.length === 2) {  // Ensure times are available before setting time slots
@@ -149,10 +193,9 @@ const BookAmenity = () => {
 
       const bookedTimes = convertTimeRangeToArray(data.bookingTimes);
       setBookedTimes(bookedTimes);
-      console.log("Booked Times:", bookedTimes);  // Log booked times
-
+      // swallow log
     } catch (error) {
-      console.error("Error fetching amenity details", error);
+      // swallow error for UI; optionally show a toast
     }
   };
 
@@ -173,55 +216,33 @@ const BookAmenity = () => {
 
   const handleChange = (e) => {
     const { name, value, type } = e.target;
+    let processedValue = sanitize(value);
 
-    console.log(name, value); // Add this line to log the input name and value
-      // rest of your handleChange code
-    
-    let processedValue = value;
-
-    if (value === "true" || value === "false") {
-        processedValue = value === "true";
+    // booleans
+    if (processedValue === "true" || processedValue === "false") {
+      processedValue = processedValue === "true";
     }
 
-   
-    if (name === "duration" && type === "number") {
-        if (parseFloat(value) < 0) {
-            alert("Invalid input for Duration: no negative values allowed.");
-            return; 
-        }
+    // numeric constraints
+    if (type === "number") {
+      processedValue = clampNumber(processedValue, 0);
     }
 
-    if (name === "residentName" && type === "text") {
-        const onlyLettersAndSpaces = /^[A-Za-z\s]+$/;  
-        if (!onlyLettersAndSpaces.test(value)) {
-            alert("Invalid input for Resident Name: only letters and spaces are allowed.");
-            return; 
-        }
+    // per-field rules
+    if (name === "residentName") {
+      processedValue = processedValue.replace(/[^A-Za-z\s]/g, "");
+    } else if (name === "residentContact") {
+      processedValue = processedValue.replace(/[^0-9]/g, "");
+    } else if (name === "specialRequests") {
+      // limit length client-side
+      processedValue = processedValue.slice(0, 1000);
     }
 
-    
-    if (name === "residentContact" && type === "number") {
-        if (parseInt(value) < 0 || !Number.isInteger(parseFloat(value))) {
-            alert("Invalid input for Resident Contact: please enter a positive integer.");
-            return; 
-        }
-    }
-
-    
-    // if (name === "bookingTime" && availableTimes.length === 2) {
-    //     const [startTime, endTime] = availableTimes;
-    //     if (value < startTime || value > endTime) {
-    //         alert("Please select a time within the available range.");
-    //         return; 
-    //     }
-    // }
-
-    
-    setFormData(prevState => ({
-        ...prevState,
-        [name]: processedValue
+    setFormData((prevState) => ({
+      ...prevState,
+      [name]: processedValue,
     }));
-};
+  };
 
 
 
@@ -235,34 +256,37 @@ const BookAmenity = () => {
       setError(false);
 
       const payload = {
-          ...formData,
-          userRef: currentUser._id,
-          //bookingStatus: "Pending",
+        bookingDate: formData.bookingDate,
+        bookingTime: formData.bookingTime,
+        duration: clampNumber(formData.duration, 0),
+        amenityId: sanitize(formData.amenityId).trim(),
+        amenityTitle: sanitize(formData.amenityTitle).trim(),
+        residentUsername: sanitize(formData.residentUsername).trim(),
+        residentName: sanitize(formData.residentName).trim(),
+        residentEmail: sanitize(formData.residentEmail).trim(),
+        residentContact: sanitize(formData.residentContact).trim(),
+        specialRequests: sanitize(formData.specialRequests).trim(),
+        bookingID: sanitize(formData.bookingID).trim(),
+        pricePerHour: clampNumber(formData.pricePerHour, 0),
+        bookingPrice: clampNumber(formData.bookingPrice, 0),
+        imageUrls: (formData.imageUrls || []).filter(isSafeUrl),
+        userRef: currentUser._id,
       };
 
-      const finishTime = calculateFinishTime(formData.bookingTime, formData.duration);
-      console.log("Finish Time:", finishTime);  // Log calculated finish time
-
-      console.log("Submitting the following data to the backend:", payload);
-      console.log("Booking Time:", new Date(formData.bookingTime)); 
-      
-      console.log(formData)// Log booking time
-
       const response = await fetch('/api/amenitiesBooking/create', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-              ...payload,
-              startTime: new Date(formData.bookingTime),
-              endTime: calEndTime(formData.bookingTime, formData.duration),
-          })
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          ...payload,
+          startTime: new Date(formData.bookingTime),
+          endTime: calEndTime(formData.bookingTime, formData.duration),
+        }),
       });
       const data = await response.json();
       setLoading(false);
       if (data.success === false) {
-          return setError(data.message);
+        return setError(data.message);
       }
 
       navigate('/dashboard?tab=bookings');
@@ -366,14 +390,17 @@ const BookAmenity = () => {
 
           </div>
           <div>
-              <Label htmlFor="name" >Resident Name:</Label>
-              <TextInput
-                type="text"
-                id="residentName"
-                name="residentName"
-                required
-                onChange={handleChange}
-              />
+            <Label htmlFor="name" >Resident Name:</Label>
+            <TextInput
+              type="text"
+              id="residentName"
+              name="residentName"
+              required
+              onChange={handleChange}
+              maxLength={80}
+              pattern="^[A-Za-z\s]*$"
+              title="Only letters and spaces allowed"
+            />
           </div>
 
           <div>
@@ -383,17 +410,22 @@ const BookAmenity = () => {
               name="residentEmail"
               value={formData.residentEmail}
               onChange={handleChange}
+              maxLength={120}
             />  
           </div>
 
           <div>
             <Label htmlFor="contact" >Resident Contact:</Label>
             <TextInput
-              type="number"
+              type="text"
               id="residentContact"
               name="residentContact"
               required
               onChange={handleChange}
+              inputMode="numeric"
+              pattern="^[0-9]{7,15}$"
+              maxLength={15}
+              title="Enter 7 to 15 digits"
             />
           </div>
 
@@ -472,6 +504,7 @@ const BookAmenity = () => {
               id="specialRequests"
               name="specialRequests"
               onChange={handleChange}
+              maxLength={1000}
             />
           </div>
 
@@ -484,10 +517,10 @@ const BookAmenity = () => {
             <p className="text-red-700">{imageUploadError && imageUploadError}</p>
             {
               formData.imageUrls.length > 0 && formData.imageUrls.map((url, index) => (
-                  <div key={`image-${index}`} className="flex justify-between p-3 border items-center">
-                      <img src={url} alt={`listing image ${index}`} className='w-20 h-20 object-contain rounded-lg' />
-                      <Button type="button" onClick={() => handleRemoveImage(index)} gradientDuoTone="pinkToOrange">Delete</Button>
-                  </div>
+                <div key={`image-${index}`} className="flex justify-between p-3 border items-center">
+                  <img src={isSafeUrl(url) ? url : ""} alt={`listing image ${index}`} className='w-20 h-20 object-contain rounded-lg' />
+                  <Button type="button" onClick={() => handleRemoveImage(index)} gradientDuoTone="pinkToOrange">Delete</Button>
+                </div>
               ))
             }
 
