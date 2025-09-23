@@ -2,6 +2,193 @@
 // This file contains security-related configurations and middleware
 
 import { getAllowedOrigins } from "./securityConfig.js";
+import crypto from "crypto";
+
+/**
+ * WHY ZAP RAISES "Failure to Define Directive with No Fallback":
+ *
+ * ZAP flags this error when:
+ * 1. Using script-src-elem or script-src-attr WITHOUT defining script-src (no fallback)
+ * 2. Using style-src-elem or style-src-attr WITHOUT defining style-src (no fallback)
+ * 3. Missing directives that have NO fallback: base-uri, form-action, frame-ancestors
+ * 4. Relying on default-src for directives that don't inherit from it
+ *
+ * This configuration resolves these issues by:
+ * - Always defining script-src when using script-src-elem/attr
+ * - Always defining style-src when using style-src-elem/attr
+ * - Explicitly defining base-uri, form-action, frame-ancestors
+ * - Not relying on default-src for critical security directives
+ */
+
+/**
+ * Generate a cryptographically secure nonce for CSP
+ * @returns {string} Base64 encoded nonce
+ */
+export const generateNonce = () => {
+  return crypto.randomBytes(16).toString("base64");
+};
+
+/**
+ * Build CSP directives based on environment
+ * @param {boolean} isProd - Whether in production mode
+ * @param {string} nonce - Optional nonce for inline scripts/styles
+ * @returns {Object} CSP directives object
+ */
+export const buildCspDirectives = (isProd = false, nonce = null) => {
+  // Base directives that are always present
+  const baseDirectives = {
+    // CRITICAL: These directives have NO fallback - must be explicitly defined
+    "default-src": ["'self'"],
+    "base-uri": ["'self'"], // NO fallback - prevents <base> tag injection
+    "form-action": ["'self'"], // NO fallback - restricts form submissions
+    "frame-ancestors": ["'none'"], // NO fallback - prevents clickjacking
+    "object-src": ["'none'"], // Prevent plugins/objects
+
+    // Image sources
+    "img-src": [
+      "'self'",
+      "data:", // Base64 images
+      "https:", // Allow HTTPS images
+      "blob:", // Dynamic/canvas images
+    ],
+
+    // Font sources
+    "font-src": [
+      "'self'",
+      "data:", // Base64 fonts
+      "https://fonts.gstatic.com", // Google Fonts
+    ],
+
+    // Media sources
+    "media-src": ["'self'"],
+
+    // Worker sources (for service workers, web workers)
+    "worker-src": [
+      "'self'",
+      "blob:", // For HMR and dynamic workers
+    ],
+
+    // Manifest sources (for PWA manifests)
+    "manifest-src": ["'self'"],
+
+    // Network connections
+    "connect-src": [
+      "'self'",
+      "https://api.stripe.com", // Payment processing
+      "https://*.googleapis.com", // Google APIs
+      ...(isProd
+        ? []
+        : [
+            "ws://localhost:*", // Dev WebSocket
+            "wss://localhost:*", // Dev secure WebSocket
+            "http://localhost:*", // Dev server connections
+          ]),
+    ],
+  };
+
+  // Production-specific directives (strict security)
+  if (isProd) {
+    return {
+      ...baseDirectives,
+
+      // PRODUCTION: Strict script policy
+      "script-src": [
+        "'self'",
+        ...(nonce ? [`'nonce-${nonce}'`] : []), // Nonce for inline scripts
+        "https://js.stripe.com", // Stripe SDK
+        "https://apis.google.com", // Google APIs
+      ],
+
+      // PRODUCTION: Strict style policy
+      "style-src": [
+        "'self'",
+        ...(nonce ? [`'nonce-${nonce}'`] : []), // Nonce for inline styles
+        "https://fonts.googleapis.com", // Google Fonts CSS
+      ],
+
+      // Production: No inline styles/scripts without nonce
+      // These are defined to ensure fallback coverage
+      "script-src-elem": [
+        "'self'",
+        ...(nonce ? [`'nonce-${nonce}'`] : []),
+        "https://js.stripe.com",
+      ],
+      "script-src-attr": ["'none'"], // No inline event handlers
+      "style-src-elem": [
+        "'self'",
+        ...(nonce ? [`'nonce-${nonce}'`] : []),
+        "https://fonts.googleapis.com",
+      ],
+      "style-src-attr": ["'none'"], // No inline style attributes
+
+      // Additional directives for complete ZAP compliance
+      "child-src": ["'self'"],
+      "frame-src": ["'none'"],
+      
+      // Navigation directive (if supported)
+      "navigate-to": ["'self'", "https:"],
+
+      // Production: Force HTTPS
+      "upgrade-insecure-requests": [],
+    };
+  }
+
+  // Development-specific directives (relaxed for HMR/debugging)
+  else {
+    return {
+      ...baseDirectives,
+
+      // DEVELOPMENT: Relaxed script policy for HMR
+      "script-src": [
+        "'self'",
+        "'unsafe-inline'", // Allow inline scripts in dev
+        "'unsafe-eval'", // Allow eval for HMR/dev tools
+        "https://js.stripe.com",
+        "https://apis.google.com",
+        "http://localhost:*", // Dev servers
+      ],
+
+      // DEVELOPMENT: Relaxed style policy for HMR
+      "style-src": [
+        "'self'",
+        "'unsafe-inline'", // Allow inline styles in dev
+        "https://fonts.googleapis.com",
+        "http://localhost:*", // Dev servers
+      ],
+
+      // Development: Define element-specific directives for fallback coverage
+      "script-src-elem": [
+        "'self'",
+        "'unsafe-inline'",
+        "http://localhost:*",
+        "https://js.stripe.com",
+      ],
+      "script-src-attr": [
+        "'self'",
+        "'unsafe-inline'",
+        "http://localhost:*"
+      ],
+      "style-src-elem": [
+        "'self'",
+        "'unsafe-inline'",
+        "http://localhost:*",
+        "https://fonts.googleapis.com",
+      ],
+      "style-src-attr": [
+        "'self'",
+        "'unsafe-inline'",
+        "http://localhost:*"
+      ],
+      
+      // Additional directives that ZAP expects for complete coverage
+      "child-src": ["'self'", "blob:"],
+      "frame-src": ["'none'"],
+      
+      // Navigation directives
+      "navigate-to": ["'self'", "http://localhost:*", "https:"]
+    };
+  }
+};
 
 /**
  * CORS Configuration
@@ -47,81 +234,71 @@ export const corsConfig = {
 };
 
 /**
- * Content Security Policy (CSP) Configuration
- * Defines what resources can be loaded and from where
- * Now includes frame-ancestors for clickjacking protection
+ * Middleware to generate and attach CSP nonce to each request
+ * This nonce can be used in inline scripts and styles for production security
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {Function} next - Express next function
  */
+export const cspNonceMiddleware = (req, res, next) => {
+  // Generate a unique nonce for this request
+  const nonce = generateNonce();
+
+  // Attach nonce to response locals for template access
+  res.locals.nonce = nonce;
+  res.locals.cspNonce = nonce; // Alternative property name
+
+  // Store nonce for CSP header generation
+  req.cspNonce = nonce;
+
+  next();
+};
+
+/**
+ * Production-ready Content Security Policy Configuration
+ * Addresses ZAP finding "Failure to Define Directive with No Fallback"
+ */
+export const createCspConfig = (
+  isProd = process.env.NODE_ENV === "production"
+) => {
+  return {
+    contentSecurityPolicy: {
+      useDefaults: false, // Don't use helmet defaults, use our explicit config
+      directives: (req, res) => {
+        // Get nonce from request if available
+        const nonce = req?.cspNonce || null;
+
+        // Build environment-appropriate directives
+        const directives = buildCspDirectives(isProd, nonce);
+        
+        // Debug log to ensure directives are being generated
+        console.log('🔒 CSP Directives generated:', Object.keys(directives).length, 'directives');
+        
+        return directives;
+      },
+      reportOnly: false, // Set to true for testing, false for enforcement
+    },
+
+    // Additional security headers
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+
+    // Remove X-Powered-By header
+    hidePoweredBy: true,
+  };
+};
+
+// Legacy export for backward compatibility
+// Use static directives for simpler implementation
 export const cspConfig = {
   contentSecurityPolicy: {
-    directives: {
-      // Only allow resources from same origin by default
-      defaultSrc: ["'self'"],
-
-      // Scripts: Allow from self and trusted CDNs
-      scriptSrc: [
-        "'self'",
-        "'unsafe-inline'", // Remove this for better security if possible
-        "https://cdn.jsdelivr.net",
-        "https://unpkg.com",
-        "https://js.stripe.com", // Stripe payment integration
-        "https://apis.google.com", // Google APIs if needed
-      ],
-
-      // Styles: Allow from self and font providers
-      styleSrc: [
-        "'self'",
-        "'unsafe-inline'", // Often needed for CSS frameworks
-        "https://fonts.googleapis.com",
-        "https://cdn.jsdelivr.net",
-      ],
-
-      // Images: Allow from self and HTTPS sources
-      imgSrc: [
-        "'self'",
-        "data:", // Base64 images
-        "https:", // All HTTPS image sources
-        "blob:", // Dynamic images
-      ],
-
-      // Fonts: Allow from self and Google Fonts
-      fontSrc: [
-        "'self'",
-        "https://fonts.gstatic.com",
-        "data:", // Base64 fonts
-      ],
-
-      // Prevent loading of plugins/objects
-      objectSrc: ["'none'"],
-
-      // Media: Allow from self
-      mediaSrc: ["'self'"],
-
-      // Network connections: API endpoints and WebSockets
-      connectSrc: [
-        "'self'",
-        "https://api.stripe.com",
-        "https://*.googleapis.com",
-        "wss://localhost:*",
-        "ws://localhost:*",
-        "https://localhost:*",
-      ],
-
-      // SECURITY FIX: Clickjacking Protection via CSP
-      // Prevent the page from being embedded in frames/iframes
-      frameSrc: ["'none'"],
-      frameAncestors: ["'none'"],
-
-      // Base URI: Prevent injection of base tags
-      baseUri: ["'self'"],
-
-      // Form action: Only allow forms to submit to same origin
-      formAction: ["'self'"],
-    },
+    useDefaults: false,
+    directives: buildCspDirectives(process.env.NODE_ENV === "production"),
+    reportOnly: false,
   },
-
-  // Additional security headers
   crossOriginEmbedderPolicy: false,
   crossOriginResourcePolicy: { policy: "cross-origin" },
+  hidePoweredBy: true,
 };
 
 /**

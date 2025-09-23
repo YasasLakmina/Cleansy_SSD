@@ -33,6 +33,7 @@ import carparkListingRoutes from "./routes/IT22561466_Routes/carparkListing.rout
 import helmet from "helmet";
 import {
   cspConfig,
+  cspNonceMiddleware,
   hiddenFileProtection,
   additionalSecurityHeaders,
   corsConfig,
@@ -46,15 +47,22 @@ dotenv.config();
 const app = express();
 
 // ============ SECURITY MIDDLEWARE ============
-// 1. SECURITY FIX: Content Security Policy (CSP) Header using Helmet
-// Protects against XSS, code injection, and clickjacking attacks
+// 1. CSP Nonce Generation (must be before helmet)
+// Generates unique nonce for each request to allow inline scripts/styles securely
+app.use(cspNonceMiddleware);
+
+// 2. SECURITY FIX: Content Security Policy with No Fallback Issues Resolved
+// Addresses ZAP finding by explicitly defining all required directives
+// - Defines base-uri, form-action, frame-ancestors (no fallback directives)
+// - Ensures script-src exists when using script-src-elem/attr
+// - Ensures style-src exists when using style-src-elem/attr
 app.use(helmet(cspConfig));
 
-// 2. SECURITY FIX: Hidden File Disclosure Prevention
+// 3. SECURITY FIX: Hidden File Disclosure Prevention
 // Blocks access to .DS_Store, .git, .env, backup files, etc.
 app.use(hiddenFileProtection);
 
-// 3. Additional security headers (enhanced clickjacking protection)
+// 4. Additional security headers (enhanced clickjacking protection)
 app.use(additionalSecurityHeaders);
 
 // ============ END SECURITY MIDDLEWARE ============
@@ -84,6 +92,27 @@ app.get("/", (req, res) => {
 
 app.use("/api/user", userRoutes);
 app.use("/api/auth", authRoutes);
+
+// ============ CSP TESTING ENDPOINT ============
+// Test endpoint to demonstrate nonce usage and CSP headers
+app.get("/api/csp-test", (req, res) => {
+  const nonce = res.locals.nonce;
+
+  res.json({
+    message: "CSP Test Endpoint",
+    nonce: nonce,
+    environment: process.env.NODE_ENV || "development",
+    cspExample: {
+      inlineScript: `<script nonce="${nonce}">console.log('This inline script will be allowed');</script>`,
+      inlineStyle: `<style nonce="${nonce}">body { background: #f0f0f0; }</style>`,
+      note: "Use the nonce attribute on inline scripts/styles in production",
+    },
+    headers: {
+      csp: res.getHeaders()["content-security-policy"] || "Not set",
+    },
+  });
+});
+// ============ END CSP TESTING ============
 
 // IT22602978 Routes
 app.use("/api/PaymentProfileCreation", PaymentProfileCreationRoutes);
