@@ -15,7 +15,7 @@ import {
   Select,
 } from "flowbite-react";
 
-import { set } from "mongoose";
+
 
 // --- Security helpers (client-side) ---
 const MAX_IMAGES = 2; // UI says 2 Images Max
@@ -45,16 +45,23 @@ const randHex = (len = 16) => {
   }
   return Math.random().toString(16).slice(2, 2 + len);
 };
+
 // --- End helpers ---
 
-const convertTimeRangeToArray = (timeRange) => {
-  const [startTime, endTime] = timeRange.split('to').map(time => {
-    const hourDigit = time.match(/\d{1,2}/);
-    return hourDigit ? hourDigit[0] : time;
-});
+// Format "H:MM" or "HH:MM" -> "HH:MM"
+const toHHMM = (t) => {
+  if (typeof t !== "string" || !t.includes(":")) return "";
+  const [h, m] = t.split(":");
+  return `${String(parseInt(h, 10)).padStart(2, "0")}:${String(parseInt(m, 10)).padStart(2, "0")}`;
+};
 
-  const adjustedEndTime = endTime === '24:00' ? '24:00' : `${parseInt(endTime.split(':')[0]) - 1}`;
-  return [startTime, adjustedEndTime];
+const convertTimeRangeToArray = (timeRange) => {
+  if (typeof timeRange !== "string") return [];
+  const m = timeRange.match(/^\s*(\d{1,2}):([0-5]\d)\s*-\s*(\d{1,2}):([0-5]\d)\s*$/);
+  if (!m) return [];
+  const startHour = String(parseInt(m[1], 10));
+  const endHour = String(parseInt(m[3], 10));
+  return [startHour, endHour];
 };
 
 const BookAmenity = () => {
@@ -169,7 +176,7 @@ const BookAmenity = () => {
  useEffect(() => {
   const fetchAmenityDetails = async () => {
     try {
-      const res = await fetch(`/api/amenitiesListing/get/${amenityId}`);
+      const res = await fetch(`/api/amenitiesListing/get/${amenityId}`, { credentials: 'include' });
       const data = await res.json();
       if (data.success === false) {
         // swallow error for UI; optionally show a toast
@@ -251,7 +258,6 @@ const BookAmenity = () => {
     try {
       if (formData.imageUrls.length < 1)
         return setError("Please upload at least one image");
-      if (formData.bookingID === currentUser.bookingID) return setError('BookingID already exists');
       setLoading(true);
       setError(false);
 
@@ -273,14 +279,36 @@ const BookAmenity = () => {
         userRef: currentUser._id,
       };
 
+      const start = toHHMM(formData.bookingTime);
+      const end = calculateFinishTime(start, Number(formData.duration));
+      const bookingTimeRange = start && end ? `${start}-${end}` : "";
+
+      if (!start || !/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) {
+        setLoading(false);
+        return setError("Invalid start or end time (HH:MM expected).");
+      }
+      if (!formData.bookingDate) {
+        setLoading(false);
+        return setError("Please select a booking date.");
+      }
+      if (!formData.duration || Number(formData.duration) <= 0) {
+        setLoading(false);
+        return setError("Please enter a valid duration (in hours).");
+      }
+      if (!formData.bookingTime) {
+        setLoading(false);
+        return setError("Please select a booking start time.");
+      }
+
       const response = await fetch('/api/amenitiesBooking/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           ...payload,
-          startTime: new Date(formData.bookingTime),
-          endTime: calEndTime(formData.bookingTime, formData.duration),
+          bookingTime: bookingTimeRange, // legacy string
+          startTime: start,
+          endTime: end,
         }),
       });
       const data = await response.json();
@@ -296,20 +324,18 @@ const BookAmenity = () => {
     }
   };
 
-  function calEndTime(startTime, duration) {
-    const startMilise = new Date(startTime).getTime();
-    const endMilise = startMilise + (duration * 60 * 60 * 1000);
-    return new Date(endMilise);
-  }
-
+  // Robust finish time calculator: wraps within the day, always returns HH:MM
   const calculateFinishTime = (startTime, duration) => {
-    // Assuming startTime is in HH:mm format
-    const [startHour, startMinute] = startTime.split(":").map(Number);
-    const totalMinutes = startHour * 60 + startMinute + (duration * 60); // Convert duration to minutes
-    const finishHour = Math.floor(totalMinutes / 60);
-    const finishMinute = totalMinutes % 60;
-    return `${finishHour.toString().padStart(2, "0")}:${finishMinute.toString().padStart(2, "0")}`;
-};
+    if (typeof startTime !== "string" || !startTime.includes(":")) return "";
+    const [h, m] = startTime.split(":").map((n) => parseInt(n, 10));
+    if (Number.isNaN(h) || Number.isNaN(m)) return "";
+    const startMinutes = h * 60 + m;
+    const addMinutes = Math.max(0, Math.floor(Number(duration) * 60));
+    const total = (startMinutes + addMinutes) % (24 * 60);
+    const hh = String(Math.floor(total / 60)).padStart(2, "0");
+    const mm = String(total % 60).padStart(2, "0");
+    return `${hh}:${mm}`;
+  };
 
 
   function generateTimeSlots(times) {
@@ -324,13 +350,13 @@ const BookAmenity = () => {
     while (currentTime <= endTime) {
         var timeSlotsStart = new Date(currentTime);
 
-        // Formatting to exclude the leading zero for single-digit hours
+        // Formatting to always use 2-digit hour for consistency
         timeslots.push({
             start: timeSlotsStart.toLocaleTimeString([], {
-                hour: 'numeric', // '2-digit' or 'numeric' for leading zero control
+                hour: '2-digit',
                 minute: '2-digit',
-                hour12: false,  // Use 24-hour time without AM/PM
-                hourCycle: 'h23' // Ensures 0-23 hour format
+                hour12: false,
+                hourCycle: 'h23'
             }),
         });
         currentTime.setTime(currentTime.getTime() + 60 * 60000);
@@ -462,6 +488,8 @@ const BookAmenity = () => {
               name="duration"
               required
               onChange={handleChange}
+              min={1}
+              step={1}
             />
           </div>
           
@@ -474,12 +502,22 @@ const BookAmenity = () => {
               value={formData.bookingTime}
               onChange={handleChange}
               className="w-full p-1"
+              defaultValue=""
             >
-              {timeslots.map((timeslot, index) => (
-                <option key={index} value={`${timeslot.start} to ${calculateFinishTime(timeslot.start, formData.duration)}`}>
-                  {`${timeslot.start}`}
-                </option>
-              ))}
+              <option value="" disabled>
+                Select a start time
+              </option>
+              {timeslots.map((timeslot, index) => {
+                const hasDuration = Number(formData.duration) > 0;
+                const label = hasDuration
+                  ? `${timeslot.start} - ${calculateFinishTime(timeslot.start, Number(formData.duration))}`
+                  : `${timeslot.start}`;
+                return (
+                  <option key={index} value={timeslot.start}>
+                    {label}
+                  </option>
+                );
+              })}
             </Select>
             <Button onClick={calculateTotalPrice} gradientDuoTone={"purpleToBlue"}>
             Calculate Total Price
@@ -511,7 +549,7 @@ const BookAmenity = () => {
           <div className="flex flex-col gap-4 flex-1">
             <p className="font-semibold">Payment Image: <span className="font-normal text-gray-600 ml-2">2 Images Max</span></p>
             <div className="flex gap-4">
-                <FileInput onChange={(e) => setFiles(e.target.files)} type='file' id="image" accept="image/*" multiple className="w-full" />
+                <FileInput onChange={(e) => setFiles(e.target.files)} type='file' id="image" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="w-full" />
                 <button onClick={handleImageSubmit} type="button" disabled={uploading} className="p-1 text-red-700 border border-red-700 rounded uppercase hover:shadow-lg disabled:opacity-80">{uploading ? 'Uploading...' : 'Upload'}</button>
             </div>
             <p className="text-red-700">{imageUploadError && imageUploadError}</p>

@@ -98,9 +98,9 @@ const AmenityCreate = () => {
       if (name === "amenityTitle") {
         // Allow letters, numbers, spaces, apostrophes and hyphens; keep spaces intact
         processedValue = processedValue.replace(/[^A-Za-z0-9 '\-]/g, "");
-      } else if (name === "amenityAvailableTimes") {
-        // Only allow digits and colon characters
-        processedValue = processedValue.replace(/[^0-9:]/g, "");
+    } else if (name === "amenityAvailableTimes") {
+        // Allow digits, colon, and dash for ranges (e.g., 09:00-17:00)
+        processedValue = processedValue.replace(/[^0-9:-]/g, "");
       }
 
       setFormData((prev) => ({
@@ -308,20 +308,16 @@ const AmenityCreate = () => {
                         />
                     </div>
 
-                    <div>
-                        <Label htmlFor="amenityAvailableTimes Times">Available Times</Label>
-                        <TextInput
-                            type="text"
-                            name="amenityAvailableTimes"
-                            value={formData.amenityAvailableTimes}
-                            onChange={handleChange}
-                            required
-                            maxLength={120}
-                            inputMode="numeric"
-                            pattern="^[0-9:]*$"
-                            placeholder="Allowed characters: digits and ':' (e.g., 09:00:12:00)"
-                        />
-                    </div>
+                    <TextInput
+                        type="text"
+                        name="amenityAvailableTimes"
+                        value={formData.amenityAvailableTimes}
+                        onChange={handleChange}
+                        required
+                        maxLength={120}
+                        pattern="^[0-9]{2}:[0-9]{2}-[0-9]{2}:[0-9]{2}$"
+                        placeholder="Format: HH:MM-HH:MM (e.g., 09:00-17:00)"
+                    />
 
                     <div>
                         <Label htmlFor="amenityPrice">Price</Label>

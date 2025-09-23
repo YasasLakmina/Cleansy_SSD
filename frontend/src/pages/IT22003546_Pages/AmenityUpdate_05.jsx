@@ -95,8 +95,13 @@ const AmenityUpdate_05 = () => {
           // Allow letters, numbers, spaces, apostrophes and hyphens; keep spaces intact
           processedValue = processedValue.replace(/[^A-Za-z0-9 '\-]/g, "");
         } else if (name === "amenityAvailableTimes") {
-          // Only allow digits and ':' while typing
-          processedValue = processedValue.replace(/[^0-9:]/g, "");
+          // Normalize separators to a single hyphen and keep only valid chars
+          processedValue = processedValue
+            .replace(/[–—−|]/g, "-")     // en/em dashes, minus sign, pipe -> hyphen
+            .replace(/\s*to\s*/gi, "-") // "to" -> hyphen
+            .replace(/\s+/g, "")        // remove spaces
+            .replace(/-+/g, "-")         // collapse multiple hyphens
+            .replace(/[^0-9:\-]/g, ""); // keep only digits, colon, hyphen
         }
 
         setFormData((prev) => ({ ...prev, [name]: processedValue }));
@@ -321,9 +326,9 @@ const AmenityUpdate_05 = () => {
                             value={formData.amenityAvailableTimes}
                             onChange={handleChange}
                             maxLength={120}
-                            inputMode="numeric"
-                            pattern="^[0-9:]*$"
-                            placeholder="Allowed characters: digits and ':' (e.g., 09:00:12:00)"
+                            pattern="^\s*\d{1,2}:[0-5]\d\s*[-–]\s*\d{1,2}:[0-5]\d\s*$"
+                            title="Use HH:MM-HH:MM (e.g., 09:00-17:00). Hyphen or en dash allowed."
+                            placeholder="e.g., 09:00-17:00"
                         />
                     </div>
                     <div className="flex flex-col gap-4 flex-1">

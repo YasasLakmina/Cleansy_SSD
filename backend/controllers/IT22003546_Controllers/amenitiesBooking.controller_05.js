@@ -29,16 +29,38 @@ function toISODate(d) {
   return date;
 }
 
+function combineDateAndTime(baseDate, hhmm) {
+  if (!(baseDate instanceof Date)) return null;
+  if (typeof hhmm !== "string" || !TIME_RE.test(hhmm)) return null;
+  const [hh, mm] = hhmm.split(":").map((n) => parseInt(n, 10));
+  const d = new Date(baseDate);
+  d.setHours(hh, mm, 0, 0);
+  return d;
+}
+
 // Only allow the fields we expect from clients (prevents mass-assignment)
 const CREATE_FIELDS = [
+  // identity / amenity
   "residentUsername",
   "residentName",
   "residentEmail",
+  "residentContact",
+  "amenityId",
   "amenityTitle",
+  // booking core
+  "bookingID",
   "bookingDate",
   "startTime",
   "endTime",
-  "bookingTime"
+  "bookingTime",
+  "duration",
+  // pricing & media
+  "pricePerHour",
+  "bookingPrice",
+  "imageUrls",
+  // misc
+  "specialRequests",
+  "userRef",
 ];
 
 const UPDATE_FIELDS = [
@@ -76,10 +98,33 @@ export const bookAmenity = async (req, res, next) => {
         const raw = pick(req.body, CREATE_FIELDS);
         const data = sanitizePayload(raw);
 
-        // Validate required fields
-        if (!data.residentUsername || !data.residentName || !data.residentEmail || !data.amenityTitle) {
-          return res.status(400).json({ success: false, message: "Missing required fields." });
+        // Coerce expected types
+        if (data.duration !== undefined) data.duration = Number(data.duration);
+        if (data.pricePerHour !== undefined) data.pricePerHour = Number(data.pricePerHour);
+        if (data.bookingPrice !== undefined) data.bookingPrice = Number(data.bookingPrice);
+        if (data.imageUrls && Array.isArray(data.imageUrls)) {
+          data.imageUrls = data.imageUrls.filter((u) => typeof u === "string" && /^https:\/\//.test(u));
         }
+        if (data.specialRequests && typeof data.specialRequests === "string") {
+          data.specialRequests = sanitizeString(data.specialRequests).slice(0, 1000);
+        }
+
+        // Validate required fields (before Mongoose errors)
+        const missing = [];
+        if (!data.residentUsername) missing.push("residentUsername");
+        if (!data.residentName) missing.push("residentName");
+        if (!data.residentEmail) missing.push("residentEmail");
+        if (!data.residentContact) missing.push("residentContact");
+        if (!data.amenityId) missing.push("amenityId");
+        if (!data.amenityTitle) missing.push("amenityTitle");
+        if (!data.bookingID) missing.push("bookingID");
+        if (!data.bookingDate) missing.push("bookingDate");
+        if (data.duration === undefined || isNaN(data.duration)) missing.push("duration");
+        if (data.bookingPrice === undefined || isNaN(data.bookingPrice)) missing.push("bookingPrice");
+        if (missing.length) {
+          return res.status(400).json({ success: false, message: `Missing/invalid required fields: ${missing.join(", ")}` });
+        }
+
         if (!isValidEmail(data.residentEmail)) {
           return res.status(400).json({ success: false, message: "Invalid email." });
         }
@@ -90,12 +135,48 @@ export const bookAmenity = async (req, res, next) => {
           return res.status(400).json({ success: false, message: "Invalid bookingDate." });
         }
 
-        // Prefer explicit startTime/endTime rather than parsing a free-form range
-        if (!isValidTime(data.startTime) || !isValidTime(data.endTime)) {
+        // Normalize start/end from either explicit fields or legacy bookingTime ("HH:MM-HH:MM" or "HH:MM to HH:MM")
+        let start = typeof data.startTime === "string" ? data.startTime.trim() : "";
+        let end   = typeof data.endTime === "string"   ? data.endTime.trim()   : "";
+        let bookingTime = typeof data.bookingTime === "string" ? data.bookingTime.trim() : "";
+
+        if ((!start || !end) && bookingTime) {
+          // accept both "to" and "-" separators
+          const normalized = bookingTime.replace(/\s+to\s+/i, "-");
+          const parts = normalized.split("-");
+          if (parts.length === 2) {
+            start = parts[0].trim();
+            end   = parts[1].trim();
+          }
+        }
+
+        // Re-validate after normalization
+        if (!isValidTime(start) || !isValidTime(end)) {
           return res.status(400).json({ success: false, message: "Invalid startTime or endTime (HH:MM expected)." });
         }
 
-        console.log("Request Body:", data);  // Log request data
+        // Canonicalize bookingTime to dash format
+        bookingTime = `${start}-${end}`;
+
+        // Build Date objects for start/end based on the bookingDate (schema expects Date)
+        const startDT = combineDateAndTime(bookingDateISO, start);
+        const endDT = combineDateAndTime(bookingDateISO, end);
+        if (!startDT || !endDT) {
+          return res.status(400).json({ success: false, message: "Invalid start/end time." });
+        }
+        if (endDT <= startDT) {
+          return res.status(400).json({ success: false, message: "End time must be after start time." });
+        }
+
+        // Generate an array of hour ticks between start and end (for logging / checks)
+        const bookingHours = [];
+        const tmp = new Date(startDT);
+        while (tmp < endDT) {
+          const hh = String(tmp.getHours()).padStart(2, "0");
+          bookingHours.push(`${hh}:00`);
+          tmp.setHours(tmp.getHours() + 1);
+        }
+        console.log("Booking Hours:", bookingHours); // Log generated hours
 
         // Check fair allocation rules here
 
@@ -127,35 +208,13 @@ export const bookAmenity = async (req, res, next) => {
             }
         }
 
-        let bookingTime = data.bookingTime || `${data.startTime} to ${data.endTime}`;
-        // Split the bookingTime string into an array of start and end times
-        const [bookingTimeStart, bookingTimeEnd] = bookingTime.split(" to ");
-
-        // Convert start and end times to integers
-        const startTimeInt = parseInt(bookingTimeStart.split(":")[0]);
-        const endTimeInt = parseInt(bookingTimeEnd.split(":")[0]);
-
-        // Generate an array of time strings between start and end times
-        const bookingHours = [];
-        for (let i = startTimeInt; i < endTimeInt; i++) {
-            // Convert the integer to a time string (e.g., 6 => "6:00")
-            const hour = i < 10 ? `0${i}` : `${i}`; // Add leading zero if needed
-            const timeString = `${hour}:00`;
-            
-            // Push the time string to the array
-            bookingHours.push(timeString);
-        }
-        console.log("Booking Hours:", bookingHours); // Log generated hours
-
-        // If fair allocation rules pass, proceed with booking
-
         const isBookingExist = await AmenitiesBooking.findOne({
           amenityTitle: data.amenityTitle,
           bookingDate: bookingDateISO,
           bookingStatus: { $in: ['Confirmed', 'Pending'] },
-          // simple overlap check on start/end times as strings "HH:MM"
+          // simple overlap check on start/end times as Date objects
           $or: [
-            { $and: [ { startTime: { $lt: data.endTime } }, { endTime: { $gt: data.startTime } } ] }
+            { $and: [ { startTime: { $lt: endDT } }, { endTime: { $gt: startDT } } ] }
           ]
         }).lean();
 
@@ -171,14 +230,27 @@ export const bookAmenity = async (req, res, next) => {
         } else {
             // If no confirmed booking exists, create a new confirmed booking
             const newAmenitiesBooking = await AmenitiesBooking.create({
+              // identity / amenity
               residentUsername: data.residentUsername,
               residentName: data.residentName,
               residentEmail: data.residentEmail,
+              residentContact: data.residentContact,
+              amenityId: data.amenityId,
               amenityTitle: data.amenityTitle,
+              userRef: data.userRef,
+              // booking core
+              bookingID: data.bookingID,
               bookingDate: bookingDateISO,
-              startTime: data.startTime,
-              endTime: data.endTime,
+              startTime: startDT,
+              endTime: endDT,
               bookingTime,
+              duration: data.duration,
+              // pricing & media
+              pricePerHour: data.pricePerHour,
+              bookingPrice: data.bookingPrice,
+              imageUrls: data.imageUrls || [],
+              // misc
+              specialRequests: data.specialRequests || "",
               bookingStatus: "Pending",
             });
 
@@ -186,8 +258,8 @@ export const bookAmenity = async (req, res, next) => {
               residentUsername: data.residentUsername,
               amenityTitle: data.amenityTitle,
               bookingDate: bookingDateISO,
-              startTime: data.startTime,
-              endTime: data.endTime,
+              startTime: start,
+              endTime: end,
               bookingTime,
               bookingStatus: "Pending",
             });
