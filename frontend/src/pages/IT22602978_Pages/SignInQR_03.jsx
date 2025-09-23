@@ -60,15 +60,14 @@ const SignInQR = () => {
         .then(data => {
           dispatch(signInSuccess(data));
           navigate(`/pay-now/${HouseId}/${paymentId}`);
-          console.log(data)
+          // Success - user authenticated via QR
         })
         .catch(error => {
-          console.error("Error:", error);
           setErrorMessage(error.message);
           dispatch(signInFailure(error.message));
         });
       } catch (error) {
-        console.error("Error:", error);
+        setErrorMessage(error.message);
         dispatch(signInFailure(error.message));
       }
     }
@@ -87,7 +86,7 @@ const SignInQR = () => {
   }
 
   function error(error) {
-    console.warn("Error scanning QR code:", error);
+    // QR code scanning error handled silently in production
   }
 
   return (
