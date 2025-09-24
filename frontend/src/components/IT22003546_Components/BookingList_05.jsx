@@ -6,23 +6,47 @@ import jsPDF from 'jspdf';
 import "jspdf-autotable";
 
 const getSafeImageUrl = (rawUrl) => {
-    const trimmedUrl = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+  try {
+    const s = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+    if (!s) return '';
 
-    if (!trimmedUrl) {
-        return '';
+    // Reject control chars or whitespace (can be abused in some browsers)
+    if (/\s/.test(s) || /[\u0000-\u001F\u007F]/.test(s)) return '';
+
+    // Allow same-origin relative paths (e.g., /uploads/a.jpg)
+    if (s.startsWith('/')) return s;
+
+    // Allow safe data URLs only for images (small payment proofs, etc.)
+    if (/^data:/i.test(s)) {
+      return /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(s) ? s : '';
     }
 
-    if (trimmedUrl.startsWith('data:')) {
-        const lowerCaseUrl = trimmedUrl.toLowerCase();
-        return lowerCaseUrl.startsWith('data:image/') ? trimmedUrl : '';
-    }
+    // Must be absolute URL; resolve with current origin as fallback base
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const url = new URL(s, base);
 
-    try {
-        const parsedUrl = new URL(trimmedUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
-        return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:' ? parsedUrl.href : '';
-    } catch (error) {
-        return '';
-    }
+    // Disallow embedded credentials
+    if (url.username || url.password) return '';
+
+    // Only http/https
+    if (!(url.protocol === 'http:' || url.protocol === 'https:')) return '';
+
+    // Whitelist trusted hosts (add yours as needed)
+    const ALLOWED_HOSTS = [
+      'firebasestorage.googleapis.com',
+      'res.cloudinary.com',
+      'images.example.com',
+      'cdn.example.com',
+      (typeof window !== 'undefined' ? window.location.hostname : 'localhost')
+    ];
+
+    const okHost = ALLOWED_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith('.' + host));
+    if (!okHost) return '';
+
+    return url.href;
+  } catch (e) {
+    return '';
+  }
 };
 
 
@@ -320,18 +344,19 @@ const BookingList_05 = () => {
                                     </Table.Cell>
                                     
                                     <Table.Cell>
-                                        {Array.isArray(booking.imageUrls) && booking.imageUrls.map((imageUrl, index) => {
+                                        {(Array.isArray(booking.imageUrls) ? booking.imageUrls : []).map((imageUrl, index) => {
                                             const safeUrl = getSafeImageUrl(imageUrl);
-                                            if (!safeUrl) {
-                                                return null;
-                                            }
-
+                                            if (!safeUrl) return null;
                                             return (
                                                 <a key={index} href={safeUrl} target="_blank" rel="noopener noreferrer">
                                                     <img
                                                         src={safeUrl}
-                                                        alt={`Image ${index}`}
+                                                        alt={`Payment image ${index + 1}`}
                                                         style={{ maxWidth: '100px', maxHeight: '100px' }}
+                                                        loading="lazy"
+                                                        decoding="async"
+                                                        referrerPolicy="no-referrer"
+                                                        crossOrigin="anonymous"
                                                     />
                                                 </a>
                                             );
@@ -455,18 +480,19 @@ const BookingList_05 = () => {
                                             </Link>
                                     </Table.Cell>
                                     <Table.Cell>
-                                        {Array.isArray(booking.imageUrls) && booking.imageUrls.map((imageUrl, index) => {
+                                        {(Array.isArray(booking.imageUrls) ? booking.imageUrls : []).map((imageUrl, index) => {
                                             const safeUrl = getSafeImageUrl(imageUrl);
-                                            if (!safeUrl) {
-                                                return null;
-                                            }
-
+                                            if (!safeUrl) return null;
                                             return (
                                                 <a key={index} href={safeUrl} target="_blank" rel="noopener noreferrer">
                                                     <img
                                                         src={safeUrl}
-                                                        alt={`Image ${index}`}
+                                                        alt={`Payment image ${index + 1}`}
                                                         style={{ maxWidth: '100px', maxHeight: '100px' }}
+                                                        loading="lazy"
+                                                        decoding="async"
+                                                        referrerPolicy="no-referrer"
+                                                        crossOrigin="anonymous"
                                                     />
                                                 </a>
                                             );
