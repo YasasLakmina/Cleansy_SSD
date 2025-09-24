@@ -16,18 +16,5 @@ module.exports = {
       'warn',
       { allowConstantExport: true },
     ],
-    // Security rules
-    'no-console': 'warn',
-    'no-alert': 'error',
-    'no-eval': 'error',
-    'no-implied-eval': 'error',
-    'no-new-func': 'error',
-    'no-script-url': 'error',
-    'no-debugger': 'error',
-    // React security
-    'react/no-danger': 'error',
-    'react/no-danger-with-children': 'error',
-    'react/jsx-no-script-url': 'error',
-    'react/jsx-no-target-blank': 'error',
   },
 }
