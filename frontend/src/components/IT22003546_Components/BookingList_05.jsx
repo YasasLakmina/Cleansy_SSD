@@ -1,4 +1,34 @@
 import { useEffect, useState } from "react";
+
+// PaymentImage component for safe fallback SVG rendering
+const PaymentImage = ({ safeUrl, alt }) => {
+  const [errored, setErrored] = useState(false);
+  if (!safeUrl) return null;
+  if (errored) {
+    return (
+      <div title="Image failed to load" style={{ width: '100px', height: '100px' }} className="flex items-center justify-center bg-gray-100 text-gray-400 rounded">
+        {/* simple image placeholder icon */}
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <path d="M21 15l-5-5L5 21"></path>
+        </svg>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={safeUrl}
+      alt={alt}
+      style={{ maxWidth: '100px', maxHeight: '100px' }}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      crossOrigin="anonymous"
+      onError={() => setErrored(true)}
+    />
+  );
+};
 import { useSelector, useDispatch } from "react-redux";
 import { Table, Button, TextInput} from "flowbite-react";
 import { Link } from "react-router-dom";
@@ -33,11 +63,12 @@ const getSafeImageUrl = (rawUrl) => {
 
     // Whitelist trusted hosts (add yours as needed)
     const ALLOWED_HOSTS = [
-      'firebasestorage.googleapis.com',
-      'res.cloudinary.com',
-      'images.example.com',
-      'cdn.example.com',
-      (typeof window !== 'undefined' ? window.location.hostname : 'localhost')
+        'firebasestorage.googleapis.com',
+        'res.cloudinary.com',
+        'images.example.com',
+        'cdn.example.com',
+        'localhost',             // allow local dev
+        '127.0.0.1'              // allow explicit local IP
     ];
 
     const okHost = ALLOWED_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith('.' + host));
@@ -348,19 +379,21 @@ const BookingList_05 = () => {
                                             const safeUrl = getSafeImageUrl(imageUrl);
                                             if (!safeUrl) return null;
                                             return (
-                                                <a key={index} href={safeUrl} target="_blank" rel="noopener noreferrer">
-                                                    <img
-                                                        src={safeUrl}
-                                                        alt={`Payment image ${index + 1}`}
-                                                        style={{ maxWidth: '100px', maxHeight: '100px' }}
-                                                        loading="lazy"
-                                                        decoding="async"
-                                                        referrerPolicy="no-referrer"
-                                                        crossOrigin="anonymous"
-                                                    />
-                                                </a>
+                                              <a key={index} href={safeUrl} target="_blank" rel="noopener noreferrer">
+                                                <PaymentImage safeUrl={safeUrl} alt={`Payment image ${index + 1}`} />
+                                              </a>
                                             );
                                         })}
+                                        {(!Array.isArray(booking.imageUrls) || booking.imageUrls.length === 0) && (
+                                          <div title="No image" style={{ width: '100px', height: '100px' }} className="flex items-center justify-center bg-gray-100 text-gray-400 rounded">
+                                            {/* simple image placeholder icon */}
+                                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                                              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                              <path d="M21 15l-5-5L5 21"></path>
+                                            </svg>
+                                          </div>
+                                        )}
                                     </Table.Cell>
                                     <Table.Cell>
                                         <span onClick={() => handleBookingDelete(booking._id)} 
@@ -484,19 +517,21 @@ const BookingList_05 = () => {
                                             const safeUrl = getSafeImageUrl(imageUrl);
                                             if (!safeUrl) return null;
                                             return (
-                                                <a key={index} href={safeUrl} target="_blank" rel="noopener noreferrer">
-                                                    <img
-                                                        src={safeUrl}
-                                                        alt={`Payment image ${index + 1}`}
-                                                        style={{ maxWidth: '100px', maxHeight: '100px' }}
-                                                        loading="lazy"
-                                                        decoding="async"
-                                                        referrerPolicy="no-referrer"
-                                                        crossOrigin="anonymous"
-                                                    />
-                                                </a>
+                                              <a key={index} href={safeUrl} target="_blank" rel="noopener noreferrer">
+                                                <PaymentImage safeUrl={safeUrl} alt={`Payment image ${index + 1}`} />
+                                              </a>
                                             );
                                         })}
+                                        {(!Array.isArray(booking.imageUrls) || booking.imageUrls.length === 0) && (
+                                          <div title="No image" style={{ width: '100px', height: '100px' }} className="flex items-center justify-center bg-gray-100 text-gray-400 rounded">
+                                            {/* simple image placeholder icon */}
+                                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                                              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                              <path d="M21 15l-5-5L5 21"></path>
+                                            </svg>
+                                          </div>
+                                        )}
                                     </Table.Cell>
                                 </Table.Row>
                             </Table.Body>
