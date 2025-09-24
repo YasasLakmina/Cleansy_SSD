@@ -7,6 +7,26 @@ import { Table, Button } from "flowbite-react";
 import jsPDF from 'jspdf'
 import "jspdf-autotable";
 
+const getSafeImageUrl = (rawUrl) => {
+  const trimmedUrl = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+
+  if (!trimmedUrl) {
+    return '';
+  }
+
+  if (trimmedUrl.startsWith('data:')) {
+    const lowerCaseUrl = trimmedUrl.toLowerCase();
+    return lowerCaseUrl.startsWith('data:image/') ? trimmedUrl : '';
+  }
+
+  try {
+    const parsedUrl = new URL(trimmedUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+    return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:' ? parsedUrl.href : '';
+  } catch (error) {
+    return '';
+  }
+};
+
 
 const DashServiceList_06 = () => {
   const { currentUser } = useSelector((state) => state.user);
@@ -111,14 +131,21 @@ const DashServiceList_06 = () => {
                   <Table.Cell>{service.serviceEmail}</Table.Cell>
                   <Table.Cell>{service.serviceRequirements}</Table.Cell>
                   <Table.Cell>
-                    {service.imageUrls.map((imageUrl, index) => (
-                      <img
-                        key={index}
-                        src={imageUrl}
-                        alt={`Image ${index}`}
-                        style={{ width: "100px", height: "100px" }}
-                      />
-                    ))}
+                    {Array.isArray(service.imageUrls) && service.imageUrls.map((imageUrl, index) => {
+                      const safeUrl = getSafeImageUrl(imageUrl);
+                      if (!safeUrl) {
+                        return null;
+                      }
+
+                      return (
+                        <img
+                          key={index}
+                          src={safeUrl}
+                          alt={`Image ${index}`}
+                          style={{ width: "100px", height: "100px" }}
+                        />
+                      );
+                    })}
                   </Table.Cell>
                   <Table.Cell>
                     <Button
