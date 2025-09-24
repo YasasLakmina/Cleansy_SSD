@@ -1,5 +1,19 @@
 import express from "express";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+// Get directory path for ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from root directory
+dotenv.config({ path: path.join(__dirname, "../.env") });
+
+// Configure Facebook OAuth strategy after environment variables are loaded
+import { configureFacebookStrategy } from "./utils/passport.js";
+configureFacebookStrategy();
+
 import dbConnection from "./dbConfig/dbConnection.js";
 import userRoutes from "./routes/user.route.js";
 import authRoutes from "./routes/auth.route.js";
@@ -42,7 +56,6 @@ import {
 import { logSecurityConfig } from "./utils/securityConfig.js";
 
 import StaffRegisterRoutes from "./routes/IT22603418_Routes/StaffRegister.route_04.js";
-dotenv.config();
 
 const app = express();
 
@@ -83,7 +96,7 @@ dbConnection();
 logSecurityConfig();
 
 app.listen(3000, () => {
-  console.log("Server is running on http://localhost:3000");
+  console.log("Server running on http://localhost:3000");
 });
 
 app.get("/", (req, res) => {
@@ -154,12 +167,45 @@ app.use("/api/carparkListing", carparkListingRoutes);
 // IT22196460 Routes
 app.use("/api/announcements", AnnouncementsRoutes);
 
+// ============ SECURITY: 404 Handler with CSP Headers ============
+// Ensure 404 responses also include security headers
+app.use((req, res, next) => {
+  // For API routes, return JSON 404
+  if (req.path.startsWith("/api/")) {
+    return res.status(404).json({
+      success: false,
+      statusCode: 404,
+      message: "API endpoint not found",
+      path: req.path,
+    });
+  }
+
+  // For non-API routes, return generic 404
+  res.status(404).json({
+    success: false,
+    statusCode: 404,
+    message: "Resource not found",
+  });
+});
+
+// ============ SECURITY: Error Handler with CSP Headers ============
+// Global error handler - security headers are already applied by helmet middleware
 app.use((err, req, res, next) => {
   const statusCode = err.statusCode || 500;
   const message = err.message || "Internal Server Error";
+
+  // Log error for debugging (simplified in production)
+  if (process.env.NODE_ENV === "development") {
+    console.error(`Error ${statusCode}:`, message);
+  }
+
   res.status(statusCode).json({
     success: false,
     statusCode,
-    message,
+    message:
+      process.env.NODE_ENV === "development"
+        ? message
+        : "Internal Server Error",
   });
 });
+

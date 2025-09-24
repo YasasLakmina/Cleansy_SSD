@@ -43,12 +43,10 @@ export const getAllowedOrigins = () => {
 
   if (isDevelopment) {
     allowedOrigins = [...allowedOrigins, ...developmentOrigins];
-    console.log("🔧 Development mode: CORS allows local origins");
   }
 
   if (isProduction) {
     allowedOrigins = [...allowedOrigins, ...productionOrigins];
-    console.log("🔒 Production mode: CORS restricted to production origins");
   }
 
   // If no environment is set, allow both (fallback)
@@ -58,7 +56,6 @@ export const getAllowedOrigins = () => {
       ...developmentOrigins,
       ...productionOrigins,
     ];
-    console.warn("⚠️  NODE_ENV not set: CORS allows all configured origins");
   }
 
   return allowedOrigins;
@@ -101,20 +98,8 @@ export const securityConfig = {
  * Log security configuration on startup
  */
 export const logSecurityConfig = () => {
-  console.log("\n🔐 Security Configuration:");
-  console.log(`   Environment: ${process.env.NODE_ENV || "not set"}`);
-  console.log(
-    `   Allowed CORS Origins: ${getAllowedOrigins().length} configured`
-  );
-  console.log(
-    `   CSP: ${
-      process.env.NODE_ENV === "production" ? "Strict" : "Development"
-    } mode`
-  );
-  console.log(
-    `   HTTPS Only: ${process.env.NODE_ENV === "production" ? "Yes" : "No"}`
-  );
-  console.log("   Security Headers: ✅ Enabled");
-  console.log("   Hidden File Protection: ✅ Enabled");
-  console.log("   Clickjacking Protection: ✅ Enabled\n");
+  // Minimal security config logging - only in development
+  if (process.env.NODE_ENV === "development") {
+    console.log(`Security: Environment=${process.env.NODE_ENV}, Origins=${getAllowedOrigins().length}, Headers=Enabled`);
+  }
 };

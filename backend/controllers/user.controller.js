@@ -37,6 +37,26 @@ export const test = (req, res) => {
   res.send("Test API");
 };
 
+// Get current authenticated user's data
+export const getCurrentUser = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return next(errorHandler(404, "User not found"));
+    }
+
+    // Remove password from response
+    const { password, ...userWithoutPassword } = user._doc;
+
+    res.status(200).json({
+      success: true,
+      user: userWithoutPassword,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // update user API
 export const updateUser = async (req, res, next) => {
   if (!mongoose.Types.ObjectId.isValid(req.params.userId)) {
