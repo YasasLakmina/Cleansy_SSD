@@ -13,7 +13,7 @@ const router = express.Router();
 // Standard authentication routes
 router.post("/signup", signup);
 router.post("/signin", signIn);
-
+router.post("/google", google);
 router.post("/signinQR", signInQR);
 
 // Facebook authentication routes
