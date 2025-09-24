@@ -15,26 +15,26 @@ const GitHubCallback = () => {
     const handleGitHubCallback = async () => {
       try {
         setIsLoading(true);
-        
+
         // Check if there's an error parameter
-        const error = searchParams.get('error');
-        const success = searchParams.get('success');
-        
+        const error = searchParams.get("error");
+        const success = searchParams.get("success");
+
         if (error) {
           throw new Error(decodeURIComponent(error));
         }
-        
-        if (success === 'true') {
+
+        if (success === "true") {
           // Authentication was successful - fetch user data
-          const response = await fetch('/api/auth/me', {
-            credentials: 'include',
+          const response = await fetch("/api/auth/me", {
+            credentials: "include",
           });
-          
+
           if (response.ok) {
             const userData = await response.json();
             dispatch(signInSuccess(userData));
             toast.success("GitHub login successful!");
-            
+
             setTimeout(() => {
               navigate("/");
             }, 1500);
@@ -47,7 +47,7 @@ const GitHubCallback = () => {
       } catch (error) {
         dispatch(signInFailure(error.message));
         toast.error("GitHub login failed. Please try again.");
-        
+
         setTimeout(() => {
           navigate("/sign-in");
         }, 3000);
@@ -99,9 +99,7 @@ const GitHubCallback = () => {
         <h2 className="text-2xl font-semibold text-green-700 mb-2">
           Authentication Successful!
         </h2>
-        <p className="text-gray-500">
-          Redirecting to dashboard...
-        </p>
+        <p className="text-gray-500">Redirecting to dashboard...</p>
       </div>
     </div>
   );
