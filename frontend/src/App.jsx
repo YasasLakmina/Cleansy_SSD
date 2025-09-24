@@ -75,6 +75,7 @@ import Parkingslot from "./pages/IT22561466_Pages/Parkingslot";
 import ParkingslotOrder from "./pages/IT22561466_Pages/ParkingslotOrder";
 import ServiceBookingUpdate_06 from "./pages/IT22350114_Pages/ServiceBookingUpdate_96";
 import CarParkAdminPage from "./pages/IT22561466_Pages/CarParkAdminPage";
+import GitHubCallback from "./pages/GitHubCallback";
 
 
 
@@ -92,6 +93,7 @@ function App() {
             <Route path="/sign-in" element={<SignIn />} />
             <Route path="/sign-in-QR"element={<SignInQR/>}/>
             <Route path="/sign-up" element={<SignUp />} />
+            <Route path="/auth/github/callback" element={<GitHubCallback />} />
             <Route path="/search" element={<SearchVisitors />} />
             <Route element={<PrivateRoute />}>
               <Route path="/dashboard" element={<Dashboard />} />

@@ -65,6 +65,15 @@ const UserSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    // OAuth provider IDs
+    facebookId: {
+      type: String,
+      default: null,
+    },
+    githubId: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true }
 );
