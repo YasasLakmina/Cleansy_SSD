@@ -3,13 +3,13 @@ import AmenitiesBooking from "../../models/IT22003546_Models/amenitiesBooking.mo
 import amenitiesBookingEmailTemplate from "../../utils/email_templates/amenityBookingEmailTemplate.js";
 import sendEmail from "../../utils/sendEmail_Tommy.js";
 
-// --- Security helpers: basic sanitization, validation, and field allowlists ---
+
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/; // HH:MM 24h
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function sanitizeString(s) {
   if (typeof s !== "string") return s;
-  // strip HTML tags and common XSS vectors
+
   return s.replace(/</g, "").replace(/>/g, "").replace(/javascript:/gi, "");
 }
 
@@ -24,7 +24,7 @@ function isValidEmail(e) {
 function toISODate(d) {
   const date = new Date(d);
   if (Number.isNaN(date.getTime())) return null;
-  // normalize to start of day (no timezone surprises for comparisons)
+
   date.setHours(0, 0, 0, 0);
   return date;
 }
@@ -38,7 +38,7 @@ function combineDateAndTime(baseDate, hhmm) {
   return d;
 }
 
-// Only allow the fields we expect from clients (prevents mass-assignment)
+
 const CREATE_FIELDS = [
   // identity / amenity
   "residentUsername",
@@ -64,7 +64,6 @@ const CREATE_FIELDS = [
 ];
 
 const UPDATE_FIELDS = [
-  // allow safe updates (do not accept arbitrary fields)
   "bookingStatus",
   "startTime",
   "endTime",
@@ -88,9 +87,8 @@ function sanitizePayload(obj) {
   }
   return out;
 }
-// --- End helpers ---
 
-// NOTE: Ensure an auth middleware validates the caller's identity and role.
+// Ensure an auth middleware validates the caller's identity and role.
 // Only the owner or an admin should be allowed to create/update/delete relevant bookings.
 export const bookAmenity = async (req, res, next) => {
     try {
@@ -283,7 +281,7 @@ export const bookAmenity = async (req, res, next) => {
     }
 };
 
-// NOTE: Ensure an auth middleware validates the caller's identity and role.
+//Ensure an auth middleware validates the caller's identity and role.
 // Only the owner or an admin should be allowed to create/update/delete relevant bookings.
 export const getAmenityBookingById = async (req, res, next) => {
     try {
@@ -301,7 +299,7 @@ export const getAmenityBookingById = async (req, res, next) => {
     }
 }
 
-// NOTE: Ensure an auth middleware validates the caller's identity and role.
+// Ensure an auth middleware validates the caller's identity and role.
 // Only the owner or an admin should be allowed to create/update/delete relevant bookings.
 export const updateAmenityBooking = async (req, res, next) => {
     try {
@@ -363,7 +361,7 @@ export const updateAmenityBooking = async (req, res, next) => {
     }
 }
 
-// NOTE: Ensure an auth middleware validates the caller's identity and role.
+// Ensure an auth middleware validates the caller's identity and role.
 // Only the owner or an admin should be allowed to create/update/delete relevant bookings.
 export const deleteAmenityBooking = async (req, res, next) => {
     try {
@@ -379,7 +377,7 @@ export const deleteAmenityBooking = async (req, res, next) => {
     }
 }
 
-// NOTE: Ensure an auth middleware validates the caller's identity and role.
+// Ensure an auth middleware validates the caller's identity and role.
 // Only the owner or an admin should be allowed to create/update/delete relevant bookings.
 export const getAllBookings = async (req, res, next) => {
     try {
