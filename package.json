@@ -17,7 +17,6 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^4.21.2",
-    "face-api.js": "^0.22.2",
     "firebase-admin": "^12.1.0",
     "flowbite-react": "^0.7.3",
     "helmet": "^8.1.0",
