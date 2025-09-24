@@ -4,10 +4,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Button, Label, TextInput, Textarea, Table } from "flowbite-react";
 import { jsPDF } from "jspdf";
 import "jspdf-autotable";
+import { secureLog, handleApiResponse } from "../../utils/errorHandler";
 import logo from "../../components/IT22607232_Components/images_01/cleansy.jpg";
 const WorkEstimate_01 = () => {
   const [showTasksError, setShowTasksError] = useState(false);
-  const [showTasks, setShowTasks,showEstimate] = useState([]);
+  const [showTasks, setShowTasks, showEstimate] = useState([]);
   const navigate = useNavigate();
   const params = useParams();
   const { currentUser } = useSelector((state) => state.user);
@@ -23,15 +24,15 @@ const WorkEstimate_01 = () => {
 
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
-  console.log(formData);
+  secureLog("info", "Form data updated:", formData);
 
   useEffect(() => {
     const fetchTask = async () => {
       const taskid = params.taskid;
       const res = await fetch(`/api/workEstimation/getOne/${taskid}`);
-      const data = await res.json();
-      if (data.success === false) {
-        console.log(data.message);
+      const result = await handleApiResponse(res, "fetchTask");
+      if (!result.success) {
+        secureLog("error", "Failed to fetch task:", result.error);
         return;
       }
       setFormData({

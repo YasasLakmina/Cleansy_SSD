@@ -5,8 +5,8 @@
   "type": "module",
   "main": "server.js",
   "scripts": {
-    "dev": "nodemon backend/server.js",
-    "start": "node backend/server.js"
+    "dev": "cd backend && nodemon server.js",
+    "start": "cd backend && node server.js"
   },
   "author": "syntaxsquad",
   "license": "ISC",
