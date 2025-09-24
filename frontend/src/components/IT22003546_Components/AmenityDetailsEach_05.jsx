@@ -13,25 +13,19 @@ const toSafeImageUrl = (rawUrl) => {
   try {
     if (!rawUrl || typeof rawUrl !== 'string') return null;
 
-    // quick reject for control characters or whitespace which may be abused
     if (/\s/.test(rawUrl) || /[\u0000-\u001F\u007F]/.test(rawUrl)) return null;
 
-    // Allow same-origin relative paths (e.g. /uploads/foo.jpg)
     if (rawUrl.startsWith('/')) return rawUrl;
 
-    // Must be an absolute URL
     const url = new URL(rawUrl);
 
-    // Disallow credentials in URL
     if (url.username || url.password) return null;
 
-    // Only allow http(s)
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
 
-    // whitelist hostnames (add your trusted hosts here)
     const ALLOWED_HOSTS = [
       'res.cloudinary.com',
-      'firebasestorage.googleapis.com',  // allow Firebase storage
+      'firebasestorage.googleapis.com',
       'images.example.com',
       'cdn.example.com',
       window.location.hostname

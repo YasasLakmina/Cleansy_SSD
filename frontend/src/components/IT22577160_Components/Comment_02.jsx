@@ -4,11 +4,32 @@ import { FaThumbsUp } from 'react-icons/fa'
 import { useSelector } from 'react-redux';
 import { Button, Textarea } from 'flowbite-react';
 
+const getSafeImageUrl = (rawUrl) => {
+   const trimmedUrl = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+
+   if (!trimmedUrl) {
+      return '';
+   }
+
+   if (trimmedUrl.startsWith('data:')) {
+      const lowerCaseUrl = trimmedUrl.toLowerCase();
+      return lowerCaseUrl.startsWith('data:image/') ? trimmedUrl : '';
+   }
+
+   try {
+      const parsedUrl = new URL(trimmedUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+      return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:' ? parsedUrl.href : '';
+   } catch (error) {
+      return '';
+   }
+};
+
 const Comment_02 = ({comment, onLike, onEdit, onDelete}) => {
    const [user, setUser] = useState({});
    const [isEditing, setIsEditing] = useState(false);
    const [editedContent, setEditedContent] = useState(comment.content);
    const { currentUser } = useSelector((state) => state.user);
+   const safeProfilePicture = getSafeImageUrl(user.profilePicture);
 
    useEffect(() => {
       const getUserComments = async () => {
@@ -48,12 +69,16 @@ const Comment_02 = ({comment, onLike, onEdit, onDelete}) => {
       } catch (error) {
          console.log(error.message);
       }
-   }
+  }
 
   return (
     <div className='flex p-4 border-b dark:border-gray-600 text-sm'>
       <div className="flex-shrink-0 mr-3">
-         <img src={user.profilePicture}  className='w-10 h-10 rounded-full bg-gray-200' alt={user.username}/>
+         {safeProfilePicture ? (
+            <img src={safeProfilePicture} className='w-10 h-10 rounded-full bg-gray-200' alt={user.username} />
+         ) : (
+            <div className='w-10 h-10 rounded-full bg-gray-200' aria-hidden="true" />
+         )}
       </div>
       <div className='flex-1'>
          <div className="flex items-center mb-1">

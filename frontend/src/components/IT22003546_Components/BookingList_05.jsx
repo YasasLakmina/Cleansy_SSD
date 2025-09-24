@@ -5,6 +5,26 @@ import { Link } from "react-router-dom";
 import jsPDF from 'jspdf';
 import "jspdf-autotable";
 
+const getSafeImageUrl = (rawUrl) => {
+    const trimmedUrl = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+
+    if (!trimmedUrl) {
+        return '';
+    }
+
+    if (trimmedUrl.startsWith('data:')) {
+        const lowerCaseUrl = trimmedUrl.toLowerCase();
+        return lowerCaseUrl.startsWith('data:image/') ? trimmedUrl : '';
+    }
+
+    try {
+        const parsedUrl = new URL(trimmedUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+        return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:' ? parsedUrl.href : '';
+    } catch (error) {
+        return '';
+    }
+};
+
 
 
 const BookingList_05 = () => {
@@ -300,15 +320,22 @@ const BookingList_05 = () => {
                                     </Table.Cell>
                                     
                                     <Table.Cell>
-                                        {booking.imageUrls.map((imageUrl, index) => (
-                                            <a key={index} href={imageUrl} target="_blank" rel="noopener noreferrer">
-                                            <img
-                                                src={imageUrl}
-                                                alt={`Image ${index}`}
-                                                style={{ maxWidth: '100px', maxHeight: '100px' }} // Adjust dimensions as needed
-                                            />
-                                            </a>
-                                        ))}
+                                        {Array.isArray(booking.imageUrls) && booking.imageUrls.map((imageUrl, index) => {
+                                            const safeUrl = getSafeImageUrl(imageUrl);
+                                            if (!safeUrl) {
+                                                return null;
+                                            }
+
+                                            return (
+                                                <a key={index} href={safeUrl} target="_blank" rel="noopener noreferrer">
+                                                    <img
+                                                        src={safeUrl}
+                                                        alt={`Image ${index}`}
+                                                        style={{ maxWidth: '100px', maxHeight: '100px' }}
+                                                    />
+                                                </a>
+                                            );
+                                        })}
                                     </Table.Cell>
                                     <Table.Cell>
                                         <span onClick={() => handleBookingDelete(booking._id)} 
@@ -428,15 +455,22 @@ const BookingList_05 = () => {
                                             </Link>
                                     </Table.Cell>
                                     <Table.Cell>
-                                        {booking.imageUrls.map((imageUrl, index) => (
-                                            <a key={index} href={imageUrl} target="_blank" rel="noopener noreferrer">
-                                            <img
-                                                src={imageUrl}
-                                                alt={`Image ${index}`}
-                                                style={{ maxWidth: '100px', maxHeight: '100px' }} // Adjust dimensions as needed
-                                            />
-                                            </a>
-                                        ))}
+                                        {Array.isArray(booking.imageUrls) && booking.imageUrls.map((imageUrl, index) => {
+                                            const safeUrl = getSafeImageUrl(imageUrl);
+                                            if (!safeUrl) {
+                                                return null;
+                                            }
+
+                                            return (
+                                                <a key={index} href={safeUrl} target="_blank" rel="noopener noreferrer">
+                                                    <img
+                                                        src={safeUrl}
+                                                        alt={`Image ${index}`}
+                                                        style={{ maxWidth: '100px', maxHeight: '100px' }}
+                                                    />
+                                                </a>
+                                            );
+                                        })}
                                     </Table.Cell>
                                 </Table.Row>
                             </Table.Body>

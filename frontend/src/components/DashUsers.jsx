@@ -4,6 +4,26 @@ import { useSelector } from 'react-redux';
 import { FaCheck, FaTimes } from "react-icons/fa";
 import { HiOutlineExclamationCircle } from "react-icons/hi";
 
+const getSafeImageUrl = (rawUrl) => {
+   const trimmedUrl = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+
+   if (!trimmedUrl) {
+      return '';
+   }
+
+   if (trimmedUrl.startsWith('data:')) {
+      const lowerCaseUrl = trimmedUrl.toLowerCase();
+      return lowerCaseUrl.startsWith('data:image/') ? trimmedUrl : '';
+   }
+
+   try {
+      const parsedUrl = new URL(trimmedUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
+      return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:' ? parsedUrl.href : '';
+   } catch (error) {
+      return '';
+   }
+};
+
 const DashUsers = () => {
    const { currentUser } = useSelector((state) => state.user);
    const [users, setUsers] = useState([]);
@@ -85,7 +105,16 @@ const DashUsers = () => {
                               {new Date(user.createdAt).toLocaleDateString()}
                            </Table.Cell>
                            <Table.Cell>
-                              <img src={user.profilePicture} alt={user.username} className='w-10 h-10 object-cover bg-gray-500 rounded-full shadow-sm' />
+                              {(() => {
+                                 const safeImageUrl = getSafeImageUrl(user.profilePicture);
+                                 return safeImageUrl ? (
+                                    <img
+                                       src={safeImageUrl}
+                                       alt={user.username}
+                                       className='w-10 h-10 object-cover bg-gray-500 rounded-full shadow-sm'
+                                    />
+                                 ) : null;
+                              })()}
                            </Table.Cell>
                            <Table.Cell>
                               {user.username}
