@@ -33,28 +33,6 @@ const clampNumber = (n, min = 0, max = Number.MAX_SAFE_INTEGER) => {
 };
 
 const AmenityCreate = () => {
-   
-    // const fetchAmenity = async () => {
-    //     const amenityID = params.amenityID;
-    //     const res = await fetch(`/api/amenitiesListing/get/${amenityID}`);
-    //     const data = await res.json();
-    //     if (data.success === false) {
-    //         console.log(data.message);
-    //         return;
-    //     }
-    //     setFormData((prevData) => ({
-    //         ...prevData,
-    //         amenityID: data.amenityID,
-    //         amenityTitle: data.amenityTitle,
-    //         amenityDescription: data.amenityDescription,
-    //         amenityLocation: data.amenityLocation,
-    //         amenityCapacity: data.amenityCapacity,
-    //         amenityAvailableTimes: data.amenityAvailableTimes,
-    //         amenityPrice: data.amenityPrice,
-    //         imageURLs: data.imageURLs,
-    //     }));
-    // }
-    // fetchAmenity();
 
     const generateAmenityId = () => `AMD-${Math.floor(1000 + Math.random() * 9000)}`;
     const [files, setFiles] = useState([]);
@@ -210,7 +188,7 @@ const AmenityCreate = () => {
     const storeImage = async (file) => {
       return new Promise((resolve, reject) => {
         try {
-          // Validate again (defense-in-depth)
+          // Validate again
           if (!IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_SIZE_BYTES) {
             return reject(new Error("Invalid file"));
           }
