@@ -9,22 +9,22 @@ export const isProduction = import.meta.env.PROD;
 
 // API Configuration
 export const API_CONFIG = {
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000',
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:3000",
   timeout: 30000, // 30 seconds
   retries: 3,
 };
 
 // Security Headers
 export const SECURITY_HEADERS = {
-  'Content-Type': 'application/json',
-  'X-Requested-With': 'XMLHttpRequest',
+  "Content-Type": "application/json",
+  "X-Requested-With": "XMLHttpRequest",
   // Don't include sensitive tokens here, add them per request
 };
 
 // Allowed file types for uploads
 export const ALLOWED_FILE_TYPES = {
-  images: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
-  documents: ['application/pdf', 'text/plain'],
+  images: ["image/jpeg", "image/png", "image/gif", "image/webp"],
+  documents: ["application/pdf", "text/plain"],
   // Add more as needed
 };
 
@@ -45,14 +45,26 @@ export const SAFE_URL_PATTERNS = [
 
 // Content Security Policy settings
 export const CSP_CONFIG = {
-  'default-src': ["'self'"],
-  'script-src': ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://js.stripe.com", "https://apis.google.com"],
-  'style-src': ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
-  'font-src': ["'self'", "https://fonts.gstatic.com"],
-  'img-src': ["'self'", "data:", "https:", "blob:"],
-  'connect-src': ["'self'", API_CONFIG.baseURL, "https://api.stripe.com", "https://*.googleapis.com", "ws://localhost:*"],
-  'frame-src': ["'none'"],
-  'object-src': ["'none'"],
+  "default-src": ["'self'"],
+  "script-src": [
+    "'self'",
+    "'unsafe-inline'",
+    "'unsafe-eval'",
+    "https://js.stripe.com",
+    "https://apis.google.com",
+  ],
+  "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+  "font-src": ["'self'", "https://fonts.gstatic.com"],
+  "img-src": ["'self'", "data:", "https:", "blob:"],
+  "connect-src": [
+    "'self'",
+    API_CONFIG.baseURL,
+    "https://api.stripe.com",
+    "https://*.googleapis.com",
+    "ws://localhost:*",
+  ],
+  "frame-src": ["'none'"],
+  "object-src": ["'none'"],
 };
 
 // Validation patterns
