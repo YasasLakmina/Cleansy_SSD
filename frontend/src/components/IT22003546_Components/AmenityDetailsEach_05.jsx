@@ -13,34 +13,60 @@ const toSafeImageUrl = (rawUrl) => {
   try {
     if (!rawUrl || typeof rawUrl !== 'string') return null;
 
-    // Allow same-origin relative paths
+    // quick reject for control characters or whitespace which may be abused
+    if (/\s/.test(rawUrl) || /[\u0000-\u001F\u007F]/.test(rawUrl)) return null;
+
+    // Allow same-origin relative paths (e.g. /uploads/foo.jpg)
     if (rawUrl.startsWith('/')) return rawUrl;
 
+    // Must be an absolute URL
     const url = new URL(rawUrl);
 
-    // only allow http/https
+    // Disallow credentials in URL
+    if (url.username || url.password) return null;
+
+    // Only allow http(s)
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
 
     // whitelist hostnames (add your trusted hosts here)
     const ALLOWED_HOSTS = [
       'res.cloudinary.com',
+      'firebasestorage.googleapis.com',  // allow Firebase storage
       'images.example.com',
       'cdn.example.com',
-      window.location.hostname // allow current origin
+      window.location.hostname
     ];
 
-    // exact match or subdomain match
     const hostnameIsAllowed = ALLOWED_HOSTS.some((host) => {
       return url.hostname === host || url.hostname.endsWith('.' + host);
     });
 
     if (!hostnameIsAllowed) return null;
 
-    // URL looks safe
-    return url.toString();
+    // normalize and return safe href
+    return url.href;
   } catch (e) {
     return null;
   }
+};
+
+// Build a sanitized amenity object for safe rendering
+const sanitizeAmenityForRender = (raw) => {
+  if (!raw || typeof raw !== 'object') return null;
+  const safe = { ...raw };
+  // sanitize textual fields by ensuring they are strings (React escapes text automatically)
+  safe.amenityTitle = typeof raw.amenityTitle === 'string' ? raw.amenityTitle : '';
+  safe.amenityDescription = typeof raw.amenityDescription === 'string' ? raw.amenityDescription : '';
+  safe.amenityLocation = typeof raw.amenityLocation === 'string' ? raw.amenityLocation : '';
+  safe.amenityAvailableTimes = typeof raw.amenityAvailableTimes === 'string' ? raw.amenityAvailableTimes : '';
+  safe.amenityCapacity = raw.amenityCapacity ?? '';
+  safe.amenityPrice = raw.amenityPrice ?? '';
+
+  // sanitize imageURLs into a safe array
+  const rawImgs = Array.isArray(raw.imageURLs) ? raw.imageURLs : [];
+  const safeImgs = rawImgs.map((u) => toSafeImageUrl(u)).filter(Boolean);
+  safe.imageURLs = safeImgs;
+  return safe;
 };
 
 const AmenityDetails = () => {
@@ -51,13 +77,15 @@ const AmenityDetails = () => {
   useEffect(() => {
     const fetchAmenityDetails = async () => {
       try {
-        const res = await fetch(`/api/amenitiesListing/get/${amenityId}`);
+        const res = await fetch(`/api/amenitiesListing/get/${amenityId}`, { credentials: 'include' });
         const data = await res.json();
         if (data.success === false) {
           console.error("Error fetching amenity details");
           return;
         }
-        setAmenity(data);
+        // sanitize before rendering to avoid DOM-based XSS vectors
+        const safe = sanitizeAmenityForRender(data);
+        setAmenity(safe);
       } catch (error) {
         console.error("Error fetching amenity details", error);
       }
@@ -100,6 +128,9 @@ const AmenityDetails = () => {
                 alt="Transparent Image"
                 className="absolute inset-0 w-full opacity-10"
                 style={{ pointerEvents: "none", zIndex: -1 }}
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
               />
             ) : (
               <div className="absolute inset-0 w-full opacity-10 bg-gray-100" style={{ pointerEvents: "none", zIndex: -1 }} />
@@ -116,8 +147,12 @@ const AmenityDetails = () => {
                 {mainImage ? (
                   <img
                     src={mainImage}
-                    alt={amenity.amenityTitle}
+                    alt={amenity.amenityTitle || 'Amenity image'}
                     className="w-full h-80 object-cover rounded-md mb-6"
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                    crossOrigin="anonymous"
                   />
                 ) : (
                   <div className="w-full h-80 bg-gray-200 rounded-md mb-6 flex items-center justify-center text-gray-500">
