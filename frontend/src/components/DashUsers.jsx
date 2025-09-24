@@ -4,25 +4,60 @@ import { useSelector } from 'react-redux';
 import { FaCheck, FaTimes } from "react-icons/fa";
 import { HiOutlineExclamationCircle } from "react-icons/hi";
 
+// Strict image URL sanitizer to prevent DOM-based XSS
 const getSafeImageUrl = (rawUrl) => {
-   const trimmedUrl = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+  try {
+    const s = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+    if (!s) return '';
 
-   if (!trimmedUrl) {
-      return '';
-   }
+    // Reject control characters or stray whitespace which may be abused
+    if (/\s/.test(s) || /[\u0000-\u001F\u007F]/.test(s)) return '';
 
-   if (trimmedUrl.startsWith('data:')) {
-      const lowerCaseUrl = trimmedUrl.toLowerCase();
-      return lowerCaseUrl.startsWith('data:image/') ? trimmedUrl : '';
-   }
+    // Allow same-origin relative paths (e.g. /uploads/foo.jpg)
+    if (s.startsWith('/')) return s;
 
-   try {
-      const parsedUrl = new URL(trimmedUrl, typeof window !== 'undefined' ? window.location.origin : 'http://localhost');
-      return parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:' ? parsedUrl.href : '';
-   } catch (error) {
-      return '';
-   }
+    // Allow safe data:image URLs (only for PNG/JPEG/WebP/GIF and base64 payloads)
+    if (/^data:/i.test(s)) {
+      return /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(s) ? s : '';
+    }
+
+    // Try to parse absolute URLs
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const url = new URL(s, base);
+
+    // Disallow credentials in URL
+    if (url.username || url.password) return '';
+
+    // Only allow http(s)
+    if (!(url.protocol === 'http:' || url.protocol === 'https:')) return '';
+
+    // Whitelist of trusted hosts
+    const ALLOWED_HOSTS = [
+      'firebasestorage.googleapis.com',
+      'res.cloudinary.com',
+      'images.example.com',
+      'cdn.example.com',
+      (typeof window !== 'undefined' ? window.location.hostname : 'localhost')
+    ];
+
+    const ok = ALLOWED_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith('.' + host));
+    if (!ok) return '';
+
+    return url.href;
+  } catch (e) {
+    return '';
+  }
 };
+
+const ImagePlaceholder = ({ className = 'w-10 h-10' }) => (
+  <div className={`flex items-center justify-center bg-gray-200 rounded-full ${className}`}>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
+      <rect x="3" y="3" width="18" height="18" rx="3" ry="3"></rect>
+      <circle cx="8.5" cy="8.5" r="1.5"></circle>
+      <path d="M21 15l-5-5L5 21"></path>
+    </svg>
+  </div>
+);
 
 const DashUsers = () => {
    const { currentUser } = useSelector((state) => state.user);
@@ -106,14 +141,29 @@ const DashUsers = () => {
                            </Table.Cell>
                            <Table.Cell>
                               {(() => {
-                                 const safeImageUrl = getSafeImageUrl(user.profilePicture);
-                                 return safeImageUrl ? (
-                                    <img
-                                       src={safeImageUrl}
-                                       alt={user.username}
-                                       className='w-10 h-10 object-cover bg-gray-500 rounded-full shadow-sm'
-                                    />
-                                 ) : null;
+                                const safeImageUrl = getSafeImageUrl(user.profilePicture);
+                                if (!safeImageUrl) return <ImagePlaceholder />;
+                                // we use a tiny wrapper that switches to the placeholder on load error to avoid broken image icon
+                                return (
+                                  <img
+                                    src={safeImageUrl}
+                                    alt={user.username || 'User image'}
+                                    className='w-10 h-10 object-cover bg-gray-500 rounded-full shadow-sm'
+                                    loading='lazy'
+                                    decoding='async'
+                                    referrerPolicy='no-referrer'
+                                    crossOrigin='anonymous'
+                                    onError={(e) => {
+                                      // replace the broken image with the placeholder element
+                                      const parent = e.currentTarget.parentNode;
+                                      if (!parent) return;
+                                      const placeholder = document.createElement('div');
+                                      placeholder.setAttribute('class', 'flex items-center justify-center bg-gray-200 rounded-full w-10 h-10');
+                                      placeholder.innerHTML = `\n          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-gray-400">\n            <rect x="3" y="3" width="18" height="18" rx="3" ry="3"></rect>\n            <circle cx="8.5" cy="8.5" r="1.5"></circle>\n            <path d="M21 15l-5-5L5 21"></path>\n          </svg>`;
+                                      parent.replaceChild(placeholder, e.currentTarget);
+                                    }}
+                                  />
+                                );
                               })()}
                            </Table.Cell>
                            <Table.Cell>
