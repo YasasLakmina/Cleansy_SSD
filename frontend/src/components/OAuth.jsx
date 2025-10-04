@@ -1,5 +1,6 @@
 import { Button } from "flowbite-react";
 import { FcGoogle } from "react-icons/fc";
+import { FaGithub } from "react-icons/fa";
 import { FaFacebook } from "react-icons/fa";
 import { GoogleAuthProvider, getAuth, signInWithPopup } from "firebase/auth";
 import { app } from "../firebase.js";
@@ -40,6 +41,25 @@ const OAuth = () => {
     }
   };
 
+  const handleGitHubClick = () => {
+    try {
+      // Redirect to GitHub OAuth
+      const clientId = "Ov23liTqZXM5My5iZUWg"; // This should match your .env
+      const redirectUri = encodeURIComponent(
+        "http://localhost:3000/api/auth/github/callback"
+      ); // Match GitHub app config
+      const scope = encodeURIComponent("user:email");
+      const state = Math.random().toString(36).substring(2, 15);
+
+      // Store state in localStorage for verification
+      localStorage.setItem("github_oauth_state", state);
+
+      const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}&state=${state}`;
+
+      // Redirect to GitHub
+      window.location.href = githubAuthUrl;
+    } catch (error) {
+      toast.error("Couldn't initiate GitHub authentication");
   const handleFacebookClick = () => {
     try {
       window.location.href = "http://localhost:3000/api/auth/facebook";
@@ -62,6 +82,11 @@ const OAuth = () => {
 
       <Button
         type="button"
+        gradientDuoTone="purpleToPink"
+        onClick={handleGitHubClick}
+        className="uppercase w-full"
+      >
+        <FaGithub className="text-2xl text-white mr-2" /> Continue With GitHub
         gradientDuoTone="purpleToBlue"
         onClick={handleFacebookClick}
         className="uppercase w-full"

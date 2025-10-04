@@ -4,11 +4,22 @@ import {
   signIn,
   signup,
   signInQR,
+  github,
+  githubCallback,
+  me,
   facebookAuth,
   facebookCallback,
 } from "../controllers/auth.controller.js";
 
 const router = express.Router();
+
+router.post("/signup", signup);
+router.post("/signin", signIn);
+router.post("/google", google);
+router.post("/github", github);
+router.get("/github/callback", githubCallback);
+router.get("/me", me);
+router.post("/signinQR", signInQR);
 
 // Standard authentication routes
 router.post("/signup", signup);
