@@ -3,6 +3,7 @@ import Home from "./pages/Home";
 import About from "./pages/About";
 import SignIn from "./pages/SignIn";
 import SignUp from "./pages/SignUp";
+import AuthSuccess from "./pages/AuthSuccess";
 import Projects from "./pages/Projects";
 import Header from "./components/Header";
 import { ToastContainer } from "react-toastify";
@@ -89,6 +90,7 @@ function App() {
             <Route path="/" element={<Home />} />
             <Route path="/about" element={<About />} />
             <Route path="/sign-in" element={<SignIn />} />
+            <Route path="/auth/success" element={<AuthSuccess />} />
             <Route path="/sign-in-QR" element={<SignInQR />} />
             <Route path="/sign-up" element={<SignUp />} />
             <Route path="/auth/github/callback" element={<GitHubCallback />} />

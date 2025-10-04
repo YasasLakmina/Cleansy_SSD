@@ -1,37 +1,95 @@
 import bcryptjs from "bcryptjs";
+import mongoose from "mongoose";
 import User from "../models/user.model.js";
 import { errorHandler } from "../utils/error.js";
+
+// --- Security helpers: sanitize inputs, allowlist fields, basic validators ---
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function isEmail(x) { return typeof x === "string" && EMAIL_RE.test(x); }
+function isNonEmptyString(x) { return typeof x === "string" && x.trim().length > 0; }
+function sanitizeString(s) {
+  if (typeof s !== "string") return s;
+  // strip HTML angle brackets and obvious javascript: URLs
+  return s.replace(/</g, "").replace(/>/g, "").replace(/javascript:/gi, "");
+}
+function sanitizePayload(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === "string") out[k] = sanitizeString(v);
+    else if (Array.isArray(v)) out[k] = v.map(sanitizeString);
+    else if (v && typeof v === "object") out[k] = sanitizePayload(v);
+    else out[k] = v;
+  }
+  return out;
+}
+const UPDATE_FIELDS = ["username", "email", "profilePicture", "password"];
+function pick(obj, allowed) {
+  const out = {};
+  for (const k of allowed) {
+    if (Object.prototype.hasOwnProperty.call(obj, k)) out[k] = obj[k];
+  }
+  return out;
+}
+// --- End helpers ---
 
 export const test = (req, res) => {
   res.send("Test API");
 };
 
+// Get current authenticated user's data
+export const getCurrentUser = async (req, res, next) => {
+  try {
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      return next(errorHandler(404, "User not found"));
+    }
+
+    // Remove password from response
+    const { password, ...userWithoutPassword } = user._doc;
+
+    res.status(200).json({
+      success: true,
+      user: userWithoutPassword,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // update user API
 export const updateUser = async (req, res, next) => {
-  if (req.user.id !== req.params.userId) {
+  if (!mongoose.Types.ObjectId.isValid(req.params.userId)) {
+    return next(errorHandler(400, "Invalid user id"));
+  }
+  if (String(req.user.id) !== String(req.params.userId) && !req.user.isAdmin) {
     return next(errorHandler(403, "You are not allowed to update this user"));
   }
 
-  if (req.body.password) {
-    if (req.body.password.length < 6) {
+  // Sanitize and allowlist incoming fields
+  const raw = pick(req.body, UPDATE_FIELDS);
+  const data = sanitizePayload(raw);
+
+  if (data.password) {
+    if (data.password.length < 6) {
       return next(errorHandler(400, "Password must be at least 6 characters"));
     }
-    req.body.password = bcryptjs.hashSync(req.body.password, 10);
+    data.password = await bcryptjs.hash(data.password, 12);
   }
 
-  if (req.body.username) {
-    if (req.body.username.length < 7 || req.body.username.length > 20) {
+  if (data.username) {
+    if (data.username.length < 7 || data.username.length > 20) {
       return next(
         errorHandler(400, "Username must be between 7 to 20 characters")
       );
     }
-    if (req.body.username.includes(" ")) {
+    if (data.username.includes(" ")) {
       return next(errorHandler(400, "Username cannot contain any spaces"));
     }
-    if (req.body.username !== req.body.username.toLowerCase()) {
+    if (data.username !== data.username.toLowerCase()) {
       return next(errorHandler(400, "Username must be in lowercase"));
     }
-    if (!req.body.username.match(/^[a-zA-Z0-9]+$/)) {
+    if (!data.username.match(/^[a-zA-Z0-9]+$/)) {
       return next(
         errorHandler(400, "Username must contain only letters and numbers")
       );
@@ -41,18 +99,18 @@ export const updateUser = async (req, res, next) => {
   try {
     const updatedUser = await User.findByIdAndUpdate(
       req.params.userId,
-      {
-        $set: {
-          username: req.body.username,
-          email: req.body.email,
-          profilePicture: req.body.profilePicture,
-          password: req.body.password,
-        },
-      },
-      { new: true }
-    );
-    const { password, ...rest } = updatedUser._doc;
-    res.status(200).json(rest);
+      { $set: {
+          username: data.username,
+          email: data.email,
+          profilePicture: data.profilePicture,
+          password: data.password,
+        } },
+      { new: true, runValidators: true, projection: { password: 0, __v: 0 } }
+    ).lean();
+    if (!updatedUser) {
+      return next(errorHandler(404, "User not found"));
+    }
+    return res.status(200).json(updatedUser);
   } catch (error) {
     next(error);
   }
@@ -60,13 +118,16 @@ export const updateUser = async (req, res, next) => {
 
 // delete user API
 export const deleteUser = async (req, res, next) => {
+  if (!mongoose.Types.ObjectId.isValid(req.params.userId)) {
+    return next(errorHandler(400, "Invalid user id"));
+  }
   if (!req.user.isAdmin && req.user.id !== req.params.userId) {
     return next(errorHandler(403, "You are not allowed to delete this user"));
   }
 
   try {
     await User.findByIdAndDelete(req.params.userId);
-    res.status(200).json("User has been deleted");
+    return res.status(200).json({ success: true, message: "User has been deleted" });
   } catch (error) {
     next(error);
   }
@@ -75,10 +136,13 @@ export const deleteUser = async (req, res, next) => {
 // signout user API
 export const signout = (req, res, next) => {
   try {
-    res
-      .clearCookie("access_token")
-      .status(200)
-      .json("User has been signed out");
+    res.clearCookie("access_token", {
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+    });
+    return res.status(200).json({ success: true, message: "User has been signed out" });
   } catch (error) {
     next(error);
   }
@@ -91,19 +155,16 @@ export const getUsers = async (req, res, next) => {
   }
 
   try {
-    const startIndex = parseInt(req.query.startIndex) || 0;
-    const limit = parseInt(req.query.limit) || 9;
-    const sortDirection = req.query.sort || "asc" ? 1 : -1;
+    const startIndex = Math.max(0, parseInt(req.query.startIndex, 10) || 0);
+    const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 9));
+    const sortDirection = (req.query.sort === "desc") ? -1 : 1;
 
     const users = await User.find()
       .sort({ createdAt: sortDirection })
       .skip(startIndex)
-      .limit(limit);
-
-    const usersWithoutPassword = users.map((user) => {
-      const { password, ...rest } = user._doc;
-      return rest;
-    });
+      .limit(limit)
+      .select("-password -__v")
+      .lean();
 
     const totalUsers = await User.countDocuments();
     const now = new Date();
@@ -115,9 +176,7 @@ export const getUsers = async (req, res, next) => {
     const lastMonthUsers = await User.countDocuments({
       createdAt: { $gte: oneMonthAgo },
     });
-    res
-      .status(200)
-      .json({ users: usersWithoutPassword, totalUsers, lastMonthUsers });
+    return res.status(200).json({ users, totalUsers, lastMonthUsers });
   } catch (error) {
     next(error);
   }
@@ -126,12 +185,14 @@ export const getUsers = async (req, res, next) => {
 // get user details
 export const getUserDetails = async (req, res, next) => {
   try {
-    const user = await User.findById(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return next(errorHandler(400, "Invalid user id"));
+    }
+    const user = await User.findById(req.params.id).select("-password -__v").lean();
     if (!user) {
       return next(errorHandler(404, "User not found"));
     }
-    const { password: pass, ...rest } = user._doc;
-    res.status(200).json(rest);
+    return res.status(200).json(user);
   } catch (error) {
     next(error);
   }
@@ -139,6 +200,12 @@ export const getUserDetails = async (req, res, next) => {
 
 // Accept Staff
 export const approveAsStaff = async (req, res) => {
+  if (!req.user || !req.user.isAdmin) {
+    return res.status(401).json({ success: false, message: "Admin privileges required" });
+  }
+  if (!mongoose.Types.ObjectId.isValid(req.params.staffID)) {
+    return res.status(400).json({ success: false, message: "Invalid staff id" });
+  }
   const _id = req.params.staffID;
 
   try {
@@ -146,8 +213,8 @@ export const approveAsStaff = async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(
       _id,
       { isStaff: true },
-      { new: true }
-    );
+      { new: true, runValidators: true, projection: { password: 0, __v: 0 } }
+    ).lean();
 
     if (!updatedUser) {
       return res
@@ -156,15 +223,14 @@ export const approveAsStaff = async (req, res) => {
     }
 
     // If the request was successfully updated, send a success response
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Staff Added successfully",
+      message: "Staff added successfully",
       data: updatedUser,
     });
   } catch (error) {
     // If an error occurs during the update process, send an error response
-    console.error("Error accepting Staff:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "An error occurred while accepting Staff",
     });
@@ -173,6 +239,12 @@ export const approveAsStaff = async (req, res) => {
 
 // Deny Staff
 export const rejectAsStaff = async (req, res) => {
+  if (!req.user || !req.user.isAdmin) {
+    return res.status(401).json({ success: false, message: "Admin privileges required" });
+  }
+  if (!mongoose.Types.ObjectId.isValid(req.params.staffID)) {
+    return res.status(400).json({ success: false, message: "Invalid staff id" });
+  }
   const _id = req.params.staffID;
 
   try {
@@ -180,8 +252,8 @@ export const rejectAsStaff = async (req, res) => {
     const updatedUser = await User.findByIdAndUpdate(
       _id,
       { isStaff: false },
-      { new: true }
-    );
+      { new: true, runValidators: true, projection: { password: 0, __v: 0 } }
+    ).lean();
 
     if (!updatedUser) {
       return res
@@ -190,15 +262,14 @@ export const rejectAsStaff = async (req, res) => {
     }
 
     // If the request was successfully updated, send a success response
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      message: "Staff Rejected",
+      message: "Staff rejected",
       data: updatedUser,
     });
   } catch (error) {
     // If an error occurs during the update process, send an error response
-    console.error("Error denying Staff:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "An error occurred while denying Staff",
     });

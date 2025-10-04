@@ -124,7 +124,7 @@ export const buildCspDirectives = (isProd = false, nonce = null) => {
       // Additional directives for complete ZAP compliance
       "child-src": ["'self'"],
       "frame-src": ["'none'"],
-      
+
       // Navigation directive (if supported)
       "navigate-to": ["'self'", "https:"],
 
@@ -163,29 +163,20 @@ export const buildCspDirectives = (isProd = false, nonce = null) => {
         "http://localhost:*",
         "https://js.stripe.com",
       ],
-      "script-src-attr": [
-        "'self'",
-        "'unsafe-inline'",
-        "http://localhost:*"
-      ],
+      "script-src-attr": ["'self'", "'unsafe-inline'", "http://localhost:*"],
       "style-src-elem": [
         "'self'",
         "'unsafe-inline'",
         "http://localhost:*",
         "https://fonts.googleapis.com",
       ],
-      "style-src-attr": [
-        "'self'",
-        "'unsafe-inline'",
-        "http://localhost:*"
-      ],
-      
+      "style-src-attr": ["'self'", "'unsafe-inline'", "http://localhost:*"],
       // Additional directives that ZAP expects for complete coverage
       "child-src": ["'self'", "blob:"],
       "frame-src": ["'none'"],
-      
+
       // Navigation directives
-      "navigate-to": ["'self'", "http://localhost:*", "https:"]
+      "navigate-to": ["'self'", "http://localhost:*", "https:"],
     };
   }
 };
@@ -270,10 +261,7 @@ export const createCspConfig = (
 
         // Build environment-appropriate directives
         const directives = buildCspDirectives(isProd, nonce);
-        
-        // Debug log to ensure directives are being generated
-        console.log('🔒 CSP Directives generated:', Object.keys(directives).length, 'directives');
-        
+
         return directives;
       },
       reportOnly: false, // Set to true for testing, false for enforcement
@@ -374,9 +362,15 @@ export const blockedPaths = [
  */
 export const hiddenFileProtection = (req, res, next) => {
   const url = req.url.toLowerCase();
+  const path = req.path.toLowerCase();
 
-  // Block access to any URL containing hidden file patterns
-  if (url.includes("/.")) {
+  // Allow API routes (they should not be blocked)
+  if (path.startsWith("/api/")) {
+    return next();
+  }
+
+  // Block access to hidden files (files starting with dot after a slash)
+  if (path.includes("/.")) {
     return res.status(403).json({
       error: "Access denied",
       message: "Access to hidden files is not allowed",
@@ -384,18 +378,18 @@ export const hiddenFileProtection = (req, res, next) => {
   }
 
   // Check against blocked paths
-  const isBlocked = blockedPaths.some((path) => {
-    const pathLower = path.toLowerCase();
+  const isBlocked = blockedPaths.some((blockedPath) => {
+    const pathLower = blockedPath.toLowerCase();
 
     // Handle wildcard patterns
     if (pathLower.includes("*")) {
       const pattern = pathLower.replace(/\*/g, ".*");
       const regex = new RegExp(pattern);
-      return regex.test(url);
+      return regex.test(path);
     }
 
     // Direct path matching
-    return url.includes(pathLower);
+    return path.includes(pathLower);
   });
 
   if (isBlocked) {

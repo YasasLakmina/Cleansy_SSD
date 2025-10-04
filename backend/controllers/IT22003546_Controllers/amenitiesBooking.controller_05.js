@@ -1,41 +1,196 @@
+import mongoose from "mongoose";
 import AmenitiesBooking from "../../models/IT22003546_Models/amenitiesBooking.model_05.js";
 import amenitiesBookingEmailTemplate from "../../utils/email_templates/amenityBookingEmailTemplate.js";
 import sendEmail from "../../utils/sendEmail_Tommy.js";
-// //Book amenity
-// export const bookAmenity = async (req, res, next) => {
-//     try {
-//         const newAmenitiesBooking = await AmenitiesBooking.create(req.body);
-//         return res.status(201).json({
-//             success: true,
-//             message: "Amenity booked successfully",
-//             amenitiesBooking: newAmenitiesBooking
-//         });
-//     } catch (error) {
-//         next(error);
-//     }
-// }
 
+// --- Security helpers: basic sanitization, validation, and field allowlists ---
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/; // HH:MM 24h
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+function sanitizeString(s) {
+  if (typeof s !== "string") return s;
+  // strip HTML tags and common XSS vectors
+  return s.replace(/</g, "").replace(/>/g, "").replace(/javascript:/gi, "");
+}
+
+function isValidTime(t) {
+  return typeof t === "string" && TIME_RE.test(t);
+}
+
+function isValidEmail(e) {
+  return typeof e === "string" && EMAIL_RE.test(e);
+}
+
+function toISODate(d) {
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return null;
+  // normalize to start of day (no timezone surprises for comparisons)
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function combineDateAndTime(baseDate, hhmm) {
+  if (!(baseDate instanceof Date)) return null;
+  if (typeof hhmm !== "string" || !TIME_RE.test(hhmm)) return null;
+  const [hh, mm] = hhmm.split(":").map((n) => parseInt(n, 10));
+  const d = new Date(baseDate);
+  d.setHours(hh, mm, 0, 0);
+  return d;
+}
+
+// Only allow the fields we expect from clients (prevents mass-assignment)
+const CREATE_FIELDS = [
+  // identity / amenity
+  "residentUsername",
+  "residentName",
+  "residentEmail",
+  "residentContact",
+  "amenityId",
+  "amenityTitle",
+  // booking core
+  "bookingID",
+  "bookingDate",
+  "startTime",
+  "endTime",
+  "bookingTime",
+  "duration",
+  // pricing & media
+  "pricePerHour",
+  "bookingPrice",
+  "imageUrls",
+  // misc
+  "specialRequests",
+  "userRef",
+];
+
+const UPDATE_FIELDS = [
+  // allow safe updates (do not accept arbitrary fields)
+  "bookingStatus",
+  "startTime",
+  "endTime",
+  "bookingTime",
+  "residentEmail",
+  "residentName"
+];
+
+function pick(obj, allowed) {
+  const out = {};
+  for (const k of allowed) if (Object.prototype.hasOwnProperty.call(obj, k)) out[k] = obj[k];
+  return out;
+}
+
+function sanitizePayload(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (typeof v === "string") out[k] = sanitizeString(v);
+    else if (Array.isArray(v)) out[k] = v.map(sanitizeString);
+    else out[k] = v;
+  }
+  return out;
+}
+// --- End helpers ---
+
+// NOTE: Ensure an auth middleware validates the caller's identity and role.
+// Only the owner or an admin should be allowed to create/update/delete relevant bookings.
 export const bookAmenity = async (req, res, next) => {
     try {
-        console.log("Request Body:", req.body);  // Log request data
+        // Whitelist & sanitize input to prevent stored XSS / mass assignment
+        const raw = pick(req.body, CREATE_FIELDS);
+        const data = sanitizePayload(raw);
 
-        // Ensure consistent formatting for bookingTime
-        let bookingTime = req.body.bookingTime;
+        // Coerce expected types
+        if (data.duration !== undefined) data.duration = Number(data.duration);
+        if (data.pricePerHour !== undefined) data.pricePerHour = Number(data.pricePerHour);
+        if (data.bookingPrice !== undefined) data.bookingPrice = Number(data.bookingPrice);
+        if (data.imageUrls && Array.isArray(data.imageUrls)) {
+          data.imageUrls = data.imageUrls.filter((u) => typeof u === "string" && /^https:\/\//.test(u));
+        }
+        if (data.specialRequests && typeof data.specialRequests === "string") {
+          data.specialRequests = sanitizeString(data.specialRequests).slice(0, 1000);
+        }
+
+        // Validate required fields (before Mongoose errors)
+        const missing = [];
+        if (!data.residentUsername) missing.push("residentUsername");
+        if (!data.residentName) missing.push("residentName");
+        if (!data.residentEmail) missing.push("residentEmail");
+        if (!data.residentContact) missing.push("residentContact");
+        if (!data.amenityId) missing.push("amenityId");
+        if (!data.amenityTitle) missing.push("amenityTitle");
+        if (!data.bookingID) missing.push("bookingID");
+        if (!data.bookingDate) missing.push("bookingDate");
+        if (data.duration === undefined || isNaN(data.duration)) missing.push("duration");
+        if (data.bookingPrice === undefined || isNaN(data.bookingPrice)) missing.push("bookingPrice");
+        if (missing.length) {
+          return res.status(400).json({ success: false, message: `Missing/invalid required fields: ${missing.join(", ")}` });
+        }
+
+        if (!isValidEmail(data.residentEmail)) {
+          return res.status(400).json({ success: false, message: "Invalid email." });
+        }
+
+        // Validate and normalize date/time
+        const bookingDateISO = toISODate(data.bookingDate);
+        if (!bookingDateISO) {
+          return res.status(400).json({ success: false, message: "Invalid bookingDate." });
+        }
+
+        // Normalize start/end from either explicit fields or legacy bookingTime ("HH:MM-HH:MM" or "HH:MM to HH:MM")
+        let start = typeof data.startTime === "string" ? data.startTime.trim() : "";
+        let end   = typeof data.endTime === "string"   ? data.endTime.trim()   : "";
+        let bookingTime = typeof data.bookingTime === "string" ? data.bookingTime.trim() : "";
+
+        if ((!start || !end) && bookingTime) {
+          // accept both "to" and "-" separators
+          const normalized = bookingTime.replace(/\s+to\s+/i, "-");
+          const parts = normalized.split("-");
+          if (parts.length === 2) {
+            start = parts[0].trim();
+            end   = parts[1].trim();
+          }
+        }
+
+        // Re-validate after normalization
+        if (!isValidTime(start) || !isValidTime(end)) {
+          return res.status(400).json({ success: false, message: "Invalid startTime or endTime (HH:MM expected)." });
+        }
+
+        // Canonicalize bookingTime to dash format
+        bookingTime = `${start}-${end}`;
+
+        // Build Date objects for start/end based on the bookingDate (schema expects Date)
+        const startDT = combineDateAndTime(bookingDateISO, start);
+        const endDT = combineDateAndTime(bookingDateISO, end);
+        if (!startDT || !endDT) {
+          return res.status(400).json({ success: false, message: "Invalid start/end time." });
+        }
+        if (endDT <= startDT) {
+          return res.status(400).json({ success: false, message: "End time must be after start time." });
+        }
+
+        // Generate an array of hour ticks between start and end (for logging / checks)
+        const bookingHours = [];
+        const tmp = new Date(startDT);
+        while (tmp < endDT) {
+          const hh = String(tmp.getHours()).padStart(2, "0");
+          bookingHours.push(`${hh}:00`);
+          tmp.setHours(tmp.getHours() + 1);
+        }
+        console.log("Booking Hours:", bookingHours); // Log generated hours
 
         // Check fair allocation rules here
 
         const pastBookings = await AmenitiesBooking.find({
-            residentUsername: req.body.residentUsername,
-            amenityTitle: req.body.amenityTitle,
+            residentUsername: data.residentUsername,
+            amenityTitle: data.amenityTitle,
             bookingStatus: { $in: ['Confirmed', 'Pending'] },
-            bookingDate: { $lt: req.body.bookingDate },
+            bookingDate: { $lt: bookingDateISO },
         }).sort({ bookingDate: -1 }).limit(2);
         
         if (pastBookings.length === 2) {
             const lastBookingDate = new Date(pastBookings[0].bookingDate);
             const secondLastBookingDate = new Date(pastBookings[1].bookingDate);
-            const newBookingDate = new Date(req.body.bookingDate);
+            const newBookingDate = bookingDateISO;
         
             // Calculate the difference in days between the last two bookings
             const dayDifference = Math.abs((lastBookingDate - secondLastBookingDate) / (1000 * 60 * 60 * 24));
@@ -53,37 +208,15 @@ export const bookAmenity = async (req, res, next) => {
             }
         }
 
-        // Split the bookingTime string into an array of start and end times
-        const [bookingTimeStart, bookingTimeEnd] = bookingTime.split(" to ");
-
-        // Convert start and end times to integers
-        const startTime = parseInt(bookingTimeStart.split(":")[0]);
-        const endTime = parseInt(bookingTimeEnd.split(":")[0]);
-
-        // Generate an array of time strings between start and end times
-        const bookingHours = [];
-        for (let i = startTime; i < endTime; i++) {
-            // Convert the integer to a time string (e.g., 6 => "6:00")
-            const hour = i < 10 ? `0${i}` : `${i}`; // Add leading zero if needed
-            const timeString = `${hour}:00`;
-            
-            // Push the time string to the array
-            bookingHours.push(timeString);
-        }
-        console.log("Booking Hours:", bookingHours); // Log generated hours
-
-        // If fair allocation rules pass, proceed with booking
-
         const isBookingExist = await AmenitiesBooking.findOne({
-            //bookingID: req.body.bookingID,
-            bookingDate: req.body.bookingDate,
-            $and: [
-                // { bookingTime: { $in: bookingHours } },
-                {startTime:{$gte:req.body.startTime}} ,
-                {endTime:{$gte:req.body.endTime}} ,// Check if any bookingTime falls within the bookingHours
-                { bookingStatus: { $in: ['Confirmed', 'Pending'] } } // Ensure bookingStatus is 'Confirmed' or 'Pending'
-            ]
-        });
+          amenityTitle: data.amenityTitle,
+          bookingDate: bookingDateISO,
+          bookingStatus: { $in: ['Confirmed', 'Pending'] },
+          // simple overlap check on start/end times as Date objects
+          $or: [
+            { $and: [ { startTime: { $lt: endDT } }, { endTime: { $gt: startDT } } ] }
+          ]
+        }).lean();
 
         console.log("Existing Booking:", isBookingExist);  // Log found booking
         console.log("Booking Time:", bookingTime);  // Log formatted booking time
@@ -97,18 +230,43 @@ export const bookAmenity = async (req, res, next) => {
         } else {
             // If no confirmed booking exists, create a new confirmed booking
             const newAmenitiesBooking = await AmenitiesBooking.create({
-                ...req.body,
-                bookingStatus: "Pending",
+              // identity / amenity
+              residentUsername: data.residentUsername,
+              residentName: data.residentName,
+              residentEmail: data.residentEmail,
+              residentContact: data.residentContact,
+              amenityId: data.amenityId,
+              amenityTitle: data.amenityTitle,
+              userRef: data.userRef,
+              // booking core
+              bookingID: data.bookingID,
+              bookingDate: bookingDateISO,
+              startTime: startDT,
+              endTime: endDT,
+              bookingTime,
+              duration: data.duration,
+              // pricing & media
+              pricePerHour: data.pricePerHour,
+              bookingPrice: data.bookingPrice,
+              imageUrls: data.imageUrls || [],
+              // misc
+              specialRequests: data.specialRequests || "",
+              bookingStatus: "Pending",
             });
 
-            const emailTemplate = amenitiesBookingEmailTemplate(req.body.residentName,{
-                ...req.body,
-                bookingStatus: "Pending",
+            const emailTemplate = amenitiesBookingEmailTemplate(data.residentName, {
+              residentUsername: data.residentUsername,
+              amenityTitle: data.amenityTitle,
+              bookingDate: bookingDateISO,
+              startTime: start,
+              endTime: end,
+              bookingTime,
+              bookingStatus: "Pending",
             });
             sendEmail(
-                req.body.residentEmail,
-                "Amenity Booking Confirmation",
-                emailTemplate
+              data.residentEmail,
+              "Amenity Booking Confirmation",
+              emailTemplate
             );
 
 
@@ -125,16 +283,15 @@ export const bookAmenity = async (req, res, next) => {
     }
 };
 
-
-
-
-
-
-//Get Amenity bookings by ID
+// NOTE: Ensure an auth middleware validates the caller's identity and role.
+// Only the owner or an admin should be allowed to create/update/delete relevant bookings.
 export const getAmenityBookingById = async (req, res, next) => {
     try {
         const { bookingId } = req.params;
-        const amenityBooking = await AmenitiesBooking.findById(bookingId);
+        if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+          return res.status(400).json({ message: "Invalid bookingId" });
+        }
+        const amenityBooking = await AmenitiesBooking.findById(bookingId).lean();
         if (!amenityBooking) {
             return res.status(404).json({ message: "Amenity Booking not found" });
         }
@@ -144,22 +301,56 @@ export const getAmenityBookingById = async (req, res, next) => {
     }
 }
 
-//update amenity booking - User
+// NOTE: Ensure an auth middleware validates the caller's identity and role.
+// Only the owner or an admin should be allowed to create/update/delete relevant bookings.
 export const updateAmenityBooking = async (req, res, next) => {
     try {
         const { bookingId } = req.params;
-        const updateAmenityBooking = await AmenitiesBooking.findByIdAndUpdate(bookingId, req.body, { new: true, upsert: true });
+        if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+          return res.status(400).json({ message: "Invalid bookingId" });
+        }
+        const rawUpdate = pick(req.body, UPDATE_FIELDS);
+        const update = sanitizePayload(rawUpdate);
+
+        // Optional: constrain status to an allowlist
+        if (update.bookingStatus && !["Pending", "Confirmed", "Cancelled"].includes(update.bookingStatus)) {
+          return res.status(400).json({ message: "Invalid bookingStatus" });
+        }
+
+        // Validate updated times if present
+        if (update.startTime && !isValidTime(update.startTime)) {
+          return res.status(400).json({ message: "Invalid startTime" });
+        }
+        if (update.endTime && !isValidTime(update.endTime)) {
+          return res.status(400).json({ message: "Invalid endTime" });
+        }
+        if (update.residentEmail && !isValidEmail(update.residentEmail)) {
+          return res.status(400).json({ message: "Invalid residentEmail" });
+        }
+
+        const updateAmenityBooking = await AmenitiesBooking.findByIdAndUpdate(
+          bookingId,
+          update,
+          { new: true, runValidators: true }
+        ).lean();
 
         if (
-            req.body.bookingStatus === "Confirmed"
+            update.bookingStatus === "Confirmed"
         ) {
             // Send an email notification to the resident
-            const emailTemplate = amenitiesBookingEmailTemplate(req.body.residentName,{
-                ...req.body,
-                bookingStatus: "Confirmed",
-            });
+            const payload = {
+              residentName: updateAmenityBooking.residentName,
+              residentEmail: updateAmenityBooking.residentEmail,
+              amenityTitle: updateAmenityBooking.amenityTitle,
+              bookingDate: updateAmenityBooking.bookingDate,
+              startTime: updateAmenityBooking.startTime,
+              endTime: updateAmenityBooking.endTime,
+              bookingTime: updateAmenityBooking.bookingTime,
+              bookingStatus: "Confirmed",
+            };
+            const emailTemplate = amenitiesBookingEmailTemplate(payload.residentName, payload);
             sendEmail(
-                req.body.residentEmail,
+                payload.residentEmail,
                 "Amenity Booking Confirmation",
                 emailTemplate
             );
@@ -172,64 +363,14 @@ export const updateAmenityBooking = async (req, res, next) => {
     }
 }
 
-// export const updateAmenityBooking = async (req, res, next) => {
-//     try {
-//         console.log("Request Body:", req.body);  // Log request data
-
-//         // Ensure consistent formatting for bookingTime
-//         let bookingTime = req.body.bookingTime;
-
-//         // Check if the length of the time string is less than 5 (HH:MM)
-//         if (bookingTime.length < 5) {
-//             // If the time is a single digit hour (e.g., "7:30"), we remove the leading zero
-//             if (bookingTime[0] === '0') {
-//                 bookingTime = bookingTime.substring(1); // Remove the leading zero
-//             }
-//         }
-
-
-//         const isBookingExist = await AmenitiesBooking.findOne({
-//             //bookingID: req.body.bookingID,
-//             bookingDate: req.body.bookingDate,
-//             bookingTime: bookingTime,
-//             bookingStatus: 'Confirmed',
-//         });
-
-//         console.log("Existing Booking:", isBookingExist);  // Log found booking
-//         console.log("Booking Time:", bookingTime);  // Log formatted booking time
-
-//         if (isBookingExist) {
-//             // If booking already exists and is confirmed, reject new booking
-//             return res.status(409).json({
-//                 success: false,
-//                 message: "A booking for this time slot is already confirmed and cannot be double-booked.",
-//             });
-//         } else {
-//             // If no confirmed booking exists, create a new confirmed booking
-//             const newAmenitiesBooking = await AmenitiesBooking.findByIdAndUpdate({
-//                 ...req.body,
-//                 bookingStatus: "Pending",
-//             });
-
-//             // Send a success response with the newly created booking
-//             return res.status(201).json({
-//                 success: true,
-//                 message: "Amenity booking created successfully",
-//                 amenityBooking: newAmenitiesBooking,
-//             });
-//         }
-//     } catch (error) {
-//         console.error("Error in booking amenity:", error);  // Log any errors
-//         next(error);
-//     }
-// };
-
-
-
-//delete amenity booking - User
+// NOTE: Ensure an auth middleware validates the caller's identity and role.
+// Only the owner or an admin should be allowed to create/update/delete relevant bookings.
 export const deleteAmenityBooking = async (req, res, next) => {
     try {
         const { bookingId } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(bookingId)) {
+          return res.status(400).json({ message: "Invalid bookingId" });
+        }
         const deleteAmenityBooking = await AmenitiesBooking.findByIdAndDelete(bookingId);
         return res.status(200).json(deleteAmenityBooking);
     }
@@ -238,15 +379,16 @@ export const deleteAmenityBooking = async (req, res, next) => {
     }
 }
 
-//get all bookings
+// NOTE: Ensure an auth middleware validates the caller's identity and role.
+// Only the owner or an admin should be allowed to create/update/delete relevant bookings.
 export const getAllBookings = async (req, res, next) => {
     try {
-        const allBookings = await AmenitiesBooking.find();
+        const allBookings = await AmenitiesBooking.find()
+          .select("-__v")
+          .lean();
         return res.status(200).json(allBookings);
     }
     catch (error) {
         next(error);
     }
 }
-
-

@@ -1,6 +1,7 @@
 import { Button } from "flowbite-react";
 import { FcGoogle } from "react-icons/fc";
 import { FaGithub } from "react-icons/fa";
+import { FaFacebook } from "react-icons/fa";
 import { GoogleAuthProvider, getAuth, signInWithPopup } from "firebase/auth";
 import { app } from "../firebase.js";
 import { useDispatch } from "react-redux";
@@ -59,6 +60,11 @@ const OAuth = () => {
       window.location.href = githubAuthUrl;
     } catch (error) {
       toast.error("Couldn't initiate GitHub authentication");
+  const handleFacebookClick = () => {
+    try {
+      window.location.href = "http://localhost:3000/api/auth/facebook";
+    } catch (error) {
+      toast.error("Couldn't initiate Facebook authentication");
     }
   };
 
@@ -81,6 +87,12 @@ const OAuth = () => {
         className="uppercase w-full"
       >
         <FaGithub className="text-2xl text-white mr-2" /> Continue With GitHub
+        gradientDuoTone="purpleToBlue"
+        onClick={handleFacebookClick}
+        className="uppercase w-full"
+      >
+        <FaFacebook className="text-2xl text-white mr-2" />
+        Continue With Facebook
       </Button>
     </div>
   );

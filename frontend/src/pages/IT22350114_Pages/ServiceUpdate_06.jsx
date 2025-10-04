@@ -11,6 +11,37 @@ import { app } from "../../firebase";
 import { Button, FileInput, Label, TextInput, Textarea } from "flowbite-react";
 import { set } from "mongoose";
 
+// --- Security helpers (client-side) ---
+const MAX_IMAGES = 6;
+const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const TITLE_MAX = 120;
+const DESC_MAX = 2000;
+
+const sanitize = (s) => (typeof s === "string" ? s.replace(/[<>]/g, "") : s); // do not trim during typing
+const isHttpsUrl = (u) => {
+  try {
+    const url = new URL(u);
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+const clampNumber = (n, min = 0, max = Number.MAX_SAFE_INTEGER) => {
+  const x = Number(n);
+  if (Number.isNaN(x)) return min;
+  return Math.max(min, Math.min(max, x));
+};
+const randHex = (len = 16) => {
+  if (window.crypto && window.crypto.getRandomValues) {
+    const arr = new Uint8Array(len / 2);
+    window.crypto.getRandomValues(arr);
+    return Array.from(arr).map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
+  return Math.random().toString(16).slice(2, 2 + len);
+};
+// --- End helpers ---
+
 const ServiceUpdate_06 = () => {
   const { currentUser } = useSelector((state) => state.user);
   const [files, setFiles] = useState([]);
@@ -49,24 +80,24 @@ const ServiceUpdate_06 = () => {
   useEffect(() => {
     const fetchServiceListings = async () => {
       const serviceID = params.serviceID;
-      const response = await fetch(`/api/serviceListing/read/${serviceID}`);
-      const data = await response.json(); // Parse response as JSON
-      if (data.success === false) {
-        console.log(data.message);
+      const response = await fetch(`/api/serviceListing/read/${serviceID}`, { credentials: "include" });
+      const data = await response.json();
+      if (!response.ok || data?.success === false) {
+        setError(data?.message || "Failed to fetch service");
         return;
       }
       setFormData((prevData) => ({
         ...prevData,
-        serviceID: data.serviceID,
-        serviceName: data.serviceName,
-        serviceDescription: data.serviceDescription,
-        servicePrice: data.servicePrice,
-        serviceType: data.serviceType,
-        serviceAvailability: data.serviceAvailability,
-        servicePhone: data.servicePhone,
-        serviceEmail: data.serviceEmail,
-        serviceRequirements: data.serviceRequirements,
-        imageUrls: data.imageUrls,
+        serviceID: sanitize(data.serviceID || ""),
+        serviceName: sanitize(data.serviceName || ""),
+        serviceDescription: sanitize(data.serviceDescription || ""),
+        servicePrice: data.servicePrice ?? "",
+        serviceType: sanitize(data.serviceType || ""),
+        serviceAvailability: sanitize(data.serviceAvailability || ""),
+        servicePhone: sanitize(data.servicePhone || ""),
+        serviceEmail: sanitize(data.serviceEmail || ""),
+        serviceRequirements: Array.isArray(data.serviceRequirements) ? data.serviceRequirements : [],
+        imageUrls: Array.isArray(data.imageUrls) ? data.imageUrls.filter(isHttpsUrl) : [],
       }));
     };
     fetchServiceListings();
@@ -76,91 +107,142 @@ const ServiceUpdate_06 = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      if (formData.serviceID === currentUser.serviceID) {
-        setError("Service ID already exists. Please try again.");
-        return;
-      }
-
       setLoading(true);
-      // Your logic for updating the service
-      console.log("Form data:", formData);
       setError(false);
+
+      // Build sanitized payload (trim at submit time)
+      const payload = {
+        serviceID: sanitize(formData.serviceID).trim().toUpperCase(),
+        serviceName: sanitize(formData.serviceName).trim(),
+        serviceDescription: sanitize(formData.serviceDescription).trim(),
+        servicePrice: clampNumber(formData.servicePrice, 0),
+        serviceType: sanitize(formData.serviceType).trim(),
+        serviceAvailability: sanitize(formData.serviceAvailability).trim(),
+        servicePhone: sanitize(formData.servicePhone).trim(),
+        serviceEmail: sanitize(formData.serviceEmail).trim(),
+        serviceRequirements: Array.isArray(formData.serviceRequirements)
+          ? formData.serviceRequirements.map((s) => sanitize(String(s)).trim()).filter(Boolean)
+          : [],
+        imageUrls: (formData.imageUrls || []).filter(isHttpsUrl),
+        userRef: currentUser?._id,
+      };
+
+      // Basic validations
+      if (!payload.serviceID || !/^[A-Z0-9]{6}$/.test(payload.serviceID)) {
+        setLoading(false);
+        return setError("Service ID must be exactly 6 alphanumeric characters (A–Z, 0–9).");
+      }
+      if (!payload.serviceName || !payload.serviceDescription) {
+        setLoading(false);
+        return setError("Please fill all required fields.");
+      }
+      if (payload.servicePrice < 0) {
+        setLoading(false);
+        return setError("Price cannot be negative.");
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(payload.serviceEmail)) {
+        setLoading(false);
+        return setError("Please enter a valid email address.");
+      }
+      if (!/^[0-9]{7,15}$/.test(payload.servicePhone)) {
+        setLoading(false);
+        return setError("Please enter a valid phone number (7–15 digits).");
+      }
+      if (payload.imageUrls.length < 1) {
+        setLoading(false);
+        return setError("Please upload at least one image.");
+      }
 
       const response = await fetch(
         `/api/serviceListing/update/${params.serviceID}`,
         {
           method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(formData),
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
         }
       );
       const data = await response.json();
       setLoading(false);
-      if (data.success === false) {
-        setError(data.message);
+      if (!response.ok || data?.success === false) {
+        setError(data?.message || "Error updating service. Please try again.");
         return;
       }
-      navigate("/dashboard?tab=services"); // Redirect to dashboard after successful update
+      navigate("/dashboard?tab=services");
     } catch (error) {
-      setError("Error updating service. Please try again."); // Set error message
-      console.log(error);
+      setLoading(false);
+      setError("Error updating service. Please try again.");
     }
   };
 
   // Function to handle image upload
   const handleImageSubmit = () => {
-    if (files.length > 0 && files.length + formData.imageUrls.length < 5) {
-      setUploading(true);
-      setImageUploadError(false);
-      const promises = [];
-
-      for (let i = 0; i < files.length; i++) {
-        promises.push(storeImage(files[i]));
-      }
-
-      Promise.all(promises)
-        .then((imageUrls) => {
-          setFormData({
-            ...formData,
-            imageUrls: formData.imageUrls.concat(imageUrls),
-          });
-          setImageUploadError(false);
-          setUploading(false);
-        })
-        .catch((error) => {
-          setImageUploadError("Image Upload failed (2mb max per Image)");
-          setUploading(false);
-        });
-    } else {
-      setImageUploadError("Maximum 5 images allowed.");
+    if (!files || files.length === 0) {
+      setImageUploadError("Please choose at least one image to upload");
       setUploading(false);
+      return;
     }
+    const total = files.length + formData.imageUrls.length;
+    if (total > MAX_IMAGES) {
+      setImageUploadError(`You can only upload ${MAX_IMAGES} images per listing`);
+      setUploading(false);
+      return;
+    }
+    const invalid = Array.from(files).find(
+      (f) => !IMAGE_TYPES.includes(f.type) || f.size > MAX_IMAGE_SIZE_BYTES
+    );
+    if (invalid) {
+      setImageUploadError("Image upload failed (allowed: JPG/PNG/WebP/GIF, max 2MB each)");
+      setUploading(false);
+      return;
+    }
+
+    setUploading(true);
+    setImageUploadError(false);
+    const promises = [];
+    for (let i = 0; i < files.length; i++) {
+      promises.push(storeImage(files[i]));
+    }
+
+    Promise.all(promises)
+      .then((urls) => {
+        const safe = urls.filter(isHttpsUrl);
+        setFormData((prev) => ({
+          ...prev,
+          imageUrls: prev.imageUrls.concat(safe).slice(0, MAX_IMAGES),
+        }));
+        setImageUploadError(false);
+        setUploading(false);
+      })
+      .catch(() => {
+        setImageUploadError("Image Upload failed (2MB max per Image)");
+        setUploading(false);
+      });
   };
   // Function to store image in cloud storage
   const storeImage = async (file) => {
     return new Promise((resolve, reject) => {
-      const storage = getStorage(app);
-      const fileName = new Date().getTime() + file.name;
-      const storageRef = ref(storage, fileName);
-      const uploadTask = uploadBytesResumable(storageRef, file);
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress =
-            (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log(`Upload is ${progress}% done`);
-        },
-        (error) => {
-          reject(error);
-        },
-        () => {
-          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-            resolve(downloadURL);
-          });
+      try {
+        if (!IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_SIZE_BYTES) {
+          return reject(new Error("Invalid file"));
         }
-      );
+        const storage = getStorage(app);
+        const ext = file.name && file.name.lastIndexOf(".") > -1 ? file.name.slice(file.name.lastIndexOf(".")) : "";
+        const fileName = `${Date.now()}_${randHex(8)}${ext}`;
+        const storageRef = ref(storage, fileName);
+        const metadata = { contentType: file.type };
+        const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+        uploadTask.on(
+          "state_changed",
+          () => {}, // no verbose logs
+          (error) => reject(error),
+          () => {
+            getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => resolve(downloadURL));
+          }
+        );
+      } catch (err) {
+        reject(err);
+      }
     });
   };
 
@@ -174,9 +256,39 @@ const ServiceUpdate_06 = () => {
 
   // Function to handle form field changes
   const handleChange = (e) => {
-    console.log("Event:", e);
-    const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    const { name, value, type, files: fileList } = e.target;
+
+    // handle file input
+    if (type === "file") {
+      setFiles(fileList);
+      return;
+    }
+
+    let v = sanitize(value);
+
+    // numeric
+    if (type === "number" || name === "servicePrice") {
+      v = clampNumber(v, 0);
+    }
+
+    // per-field rules
+    if (name === "serviceID") {
+      v = String(v).toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 6);
+    } else if (name === "serviceName") {
+      v = v.replace(/[^A-Za-z0-9 '\-]/g, "").slice(0, TITLE_MAX);
+    } else if (name === "serviceDescription") {
+      v = v.slice(0, DESC_MAX);
+    } else if (name === "servicePhone") {
+      v = v.replace(/[^0-9]/g, "").slice(0, 15);
+    } else if (name === "serviceEmail") {
+      v = v.slice(0, 120);
+    } else if (name === "serviceRequirements") {
+      const parts = v.split(",").map((s) => sanitize(s).trim()).filter(Boolean).slice(0, 15);
+      setFormData((prev) => ({ ...prev, serviceRequirements: parts }));
+      return;
+    }
+
+    setFormData((prev) => ({ ...prev, [name]: v }));
   };
 
   return (
@@ -195,8 +307,9 @@ const ServiceUpdate_06 = () => {
               name="serviceID"
               value={serviceID}
               onChange={handleChange}
-              placeholder="Enter Service ID"
+              placeholder="6 chars, A–Z/0–9"
               required
+              maxLength={6}
             />
           </div>
           <div>
@@ -208,6 +321,7 @@ const ServiceUpdate_06 = () => {
               onChange={handleChange}
               placeholder="Enter Service Name"
               required
+              maxLength={TITLE_MAX}
             />
           </div>
           <div>
@@ -218,6 +332,7 @@ const ServiceUpdate_06 = () => {
               onChange={handleChange}
               placeholder="Enter Service Description"
               required
+              maxLength={DESC_MAX}
             />
           </div>
           <div>
@@ -229,6 +344,8 @@ const ServiceUpdate_06 = () => {
               onChange={handleChange}
               placeholder="Enter Service Price"
               required
+              min={0}
+              step={0.01}
             />
           </div>
           <div>
@@ -262,6 +379,10 @@ const ServiceUpdate_06 = () => {
               onChange={handleChange}
               placeholder="Enter Service Phone"
               required
+              inputMode="numeric"
+              pattern="^[0-9]{7,15}$"
+              maxLength={15}
+              title="Enter 7 to 15 digits"
             />
           </div>
           <div>
@@ -273,6 +394,7 @@ const ServiceUpdate_06 = () => {
               onChange={handleChange}
               placeholder="Enter Service Email"
               required
+              maxLength={120}
             />
           </div>
           <div>
@@ -280,9 +402,9 @@ const ServiceUpdate_06 = () => {
             <TextInput
               type="text"
               name="serviceRequirements"
-              value={serviceRequirements}
+              value={Array.isArray(serviceRequirements) ? serviceRequirements.join(", ") : serviceRequirements}
               onChange={handleChange}
-              placeholder="Enter Service Requirements"
+              placeholder="Comma-separated (e.g., Gloves, Mask, ID)"
               required
             />
           </div>
@@ -300,7 +422,7 @@ const ServiceUpdate_06 = () => {
                 onChange={(e) => setFiles(e.target.files)}
                 type="file"
                 id="image"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/gif"
                 multiple
                 className="w-full"
               />
@@ -323,7 +445,7 @@ const ServiceUpdate_06 = () => {
                   className="flex justify-between p-3 border items-center"
                 >
                   <img
-                    src={url}
+                    src={isHttpsUrl(url) ? url : ""}
                     alt={`listing image ${index}`}
                     className="w-20 h-20 object-contain rounded-lg"
                   />

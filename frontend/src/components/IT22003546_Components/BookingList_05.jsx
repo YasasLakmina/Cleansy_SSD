@@ -1,9 +1,84 @@
 import { useEffect, useState } from "react";
+
+// PaymentImage component for safe fallback SVG rendering
+const PaymentImage = ({ safeUrl, alt }) => {
+  const [errored, setErrored] = useState(false);
+  if (!safeUrl) return null;
+  if (errored) {
+    return (
+      <div title="Image failed to load" style={{ width: '100px', height: '100px' }} className="flex items-center justify-center bg-gray-100 text-gray-400 rounded">
+        {/* simple image placeholder icon */}
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <path d="M21 15l-5-5L5 21"></path>
+        </svg>
+      </div>
+    );
+  }
+  return (
+    <img
+      src={safeUrl}
+      alt={alt}
+      style={{ maxWidth: '100px', maxHeight: '100px' }}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      crossOrigin="anonymous"
+      onError={() => setErrored(true)}
+    />
+  );
+};
 import { useSelector, useDispatch } from "react-redux";
 import { Table, Button, TextInput} from "flowbite-react";
 import { Link } from "react-router-dom";
 import jsPDF from 'jspdf';
 import "jspdf-autotable";
+
+const getSafeImageUrl = (rawUrl) => {
+  try {
+    const s = typeof rawUrl === 'string' ? rawUrl.trim() : '';
+    if (!s) return '';
+
+    // Reject control chars or whitespace (can be abused in some browsers)
+    if (/\s/.test(s) || /[\u0000-\u001F\u007F]/.test(s)) return '';
+
+    // Allow same-origin relative paths (e.g., /uploads/a.jpg)
+    if (s.startsWith('/')) return s;
+
+    // Allow safe data URLs only for images (small payment proofs, etc.)
+    if (/^data:/i.test(s)) {
+      return /^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/i.test(s) ? s : '';
+    }
+
+    // Must be absolute URL; resolve with current origin as fallback base
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const url = new URL(s, base);
+
+    // Disallow embedded credentials
+    if (url.username || url.password) return '';
+
+    // Only http/https
+    if (!(url.protocol === 'http:' || url.protocol === 'https:')) return '';
+
+    // Whitelist trusted hosts (add yours as needed)
+    const ALLOWED_HOSTS = [
+        'firebasestorage.googleapis.com',
+        'res.cloudinary.com',
+        'images.example.com',
+        'cdn.example.com',
+        'localhost',             // allow local dev
+        '127.0.0.1'              // allow explicit local IP
+    ];
+
+    const okHost = ALLOWED_HOSTS.some((host) => url.hostname === host || url.hostname.endsWith('.' + host));
+    if (!okHost) return '';
+
+    return url.href;
+  } catch (e) {
+    return '';
+  }
+};
 
 
 
@@ -300,15 +375,25 @@ const BookingList_05 = () => {
                                     </Table.Cell>
                                     
                                     <Table.Cell>
-                                        {booking.imageUrls.map((imageUrl, index) => (
-                                            <a key={index} href={imageUrl} target="_blank" rel="noopener noreferrer">
-                                            <img
-                                                src={imageUrl}
-                                                alt={`Image ${index}`}
-                                                style={{ maxWidth: '100px', maxHeight: '100px' }} // Adjust dimensions as needed
-                                            />
-                                            </a>
-                                        ))}
+                                        {(Array.isArray(booking.imageUrls) ? booking.imageUrls : []).map((imageUrl, index) => {
+                                            const safeUrl = getSafeImageUrl(imageUrl);
+                                            if (!safeUrl) return null;
+                                            return (
+                                              <a key={index} href={safeUrl} target="_blank" rel="noopener noreferrer">
+                                                <PaymentImage safeUrl={safeUrl} alt={`Payment image ${index + 1}`} />
+                                              </a>
+                                            );
+                                        })}
+                                        {(!Array.isArray(booking.imageUrls) || booking.imageUrls.length === 0) && (
+                                          <div title="No image" style={{ width: '100px', height: '100px' }} className="flex items-center justify-center bg-gray-100 text-gray-400 rounded">
+                                            {/* simple image placeholder icon */}
+                                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                                              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                              <path d="M21 15l-5-5L5 21"></path>
+                                            </svg>
+                                          </div>
+                                        )}
                                     </Table.Cell>
                                     <Table.Cell>
                                         <span onClick={() => handleBookingDelete(booking._id)} 
@@ -428,15 +513,25 @@ const BookingList_05 = () => {
                                             </Link>
                                     </Table.Cell>
                                     <Table.Cell>
-                                        {booking.imageUrls.map((imageUrl, index) => (
-                                            <a key={index} href={imageUrl} target="_blank" rel="noopener noreferrer">
-                                            <img
-                                                src={imageUrl}
-                                                alt={`Image ${index}`}
-                                                style={{ maxWidth: '100px', maxHeight: '100px' }} // Adjust dimensions as needed
-                                            />
-                                            </a>
-                                        ))}
+                                        {(Array.isArray(booking.imageUrls) ? booking.imageUrls : []).map((imageUrl, index) => {
+                                            const safeUrl = getSafeImageUrl(imageUrl);
+                                            if (!safeUrl) return null;
+                                            return (
+                                              <a key={index} href={safeUrl} target="_blank" rel="noopener noreferrer">
+                                                <PaymentImage safeUrl={safeUrl} alt={`Payment image ${index + 1}`} />
+                                              </a>
+                                            );
+                                        })}
+                                        {(!Array.isArray(booking.imageUrls) || booking.imageUrls.length === 0) && (
+                                          <div title="No image" style={{ width: '100px', height: '100px' }} className="flex items-center justify-center bg-gray-100 text-gray-400 rounded">
+                                            {/* simple image placeholder icon */}
+                                            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                                              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                                              <path d="M21 15l-5-5L5 21"></path>
+                                            </svg>
+                                          </div>
+                                        )}
                                     </Table.Cell>
                                 </Table.Row>
                             </Table.Body>

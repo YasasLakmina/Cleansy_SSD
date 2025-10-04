@@ -13,6 +13,25 @@ import {
     Alert
 } from "flowbite-react";
 
+// === Security helpers (client-side) ===
+const MAX_IMAGES = 6;
+const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const isSafeUrl = (u) => {
+  try {
+    const url = new URL(u);
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+const sanitize = (s) => (typeof s === "string" ? s.replace(/[<>]/g, "") : s); // don't trim while typing
+const clampNumber = (n, min = 0, max = Number.MAX_SAFE_INTEGER) => {
+  const x = Number(n);
+  if (Number.isNaN(x)) return min;
+  return Math.max(min, Math.min(max, x));
+};
+
 const AmenityUpdate_05 = () => {
     const navigate = useNavigate();
     const params = useParams();
@@ -23,7 +42,7 @@ const AmenityUpdate_05 = () => {
         amenityTitle: "",
         amenityDescription: "",
         amenityLocation: "",
-        amenityCapacity: "",
+        amenityCapacity: 1,
         amenityAvailableTimes: "",
         amenityPrice: "",
         imageURLs: [],
@@ -40,7 +59,6 @@ const AmenityUpdate_05 = () => {
             const res = await fetch(`/api/amenitiesListing/get/${amenityID}`);
             const data = await res.json();
             if (data.success === false) {
-                console.log(data.message);
                 return;
             }
             setFormData((prevData) => ({
@@ -60,14 +78,33 @@ const AmenityUpdate_05 = () => {
         , []);
 
     const handleChange = (e) => {
-        console.log("Event:", e);
-        const { name, value } = e.target;
-        console.log("Name:", name);
-        console.log("Value:", value);
-        setFormData({
-            ...formData,
-            [name]: value,
-        });
+        const { name, value, type } = e.target;
+        let processedValue = sanitize(value);
+
+        // boolean coercion if needed
+        if (processedValue === "true" || processedValue === "false") {
+          processedValue = processedValue === "true";
+        }
+
+        if (type === "number") {
+          processedValue = clampNumber(processedValue, 0);
+        }
+
+        // Field-specific guardrails
+        if (name === "amenityTitle") {
+          // Allow letters, numbers, spaces, apostrophes and hyphens; keep spaces intact
+          processedValue = processedValue.replace(/[^A-Za-z0-9 '\-]/g, "");
+        } else if (name === "amenityAvailableTimes") {
+          // Normalize separators to a single hyphen and keep only valid chars
+          processedValue = processedValue
+            .replace(/[–—−|]/g, "-")     // en/em dashes, minus sign, pipe -> hyphen
+            .replace(/\s*to\s*/gi, "-") // "to" -> hyphen
+            .replace(/\s+/g, "")        // remove spaces
+            .replace(/-+/g, "-")         // collapse multiple hyphens
+            .replace(/[^0-9:\-]/g, ""); // keep only digits, colon, hyphen
+        }
+
+        setFormData((prev) => ({ ...prev, [name]: processedValue }));
     };
         
         
@@ -75,89 +112,127 @@ const AmenityUpdate_05 = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
-            if (formData.imageURLs.length < 1)
-                return setError("Please upload at least one image");
-            if (formData.amenityID === currentUser.AmenityID) {
-
-                setError("AmenityID already exists");
-                return;
+            // Basic validation
+            if (formData.imageURLs.length < 1) {
+              return setError("Please upload at least one image");
             }
+            if (!formData.amenityTitle || !formData.amenityDescription || !formData.amenityLocation) {
+              return setError("Please fill all required fields");
+            }
+            if (clampNumber(formData.amenityCapacity, 1) < 1) {
+              return setError("Capacity must be at least 1");
+            }
+            if (clampNumber(formData.amenityPrice, 0) < 0) {
+              return setError("Price cannot be negative");
+            }
+
             setLoading(true);
-            console.log("Form Data:", formData);
             setError(false);
-            
+
+            // Build sanitized payload (trim only at submit)
+            const payload = {
+              amenityID: sanitize(formData.amenityID).trim(),
+              amenityTitle: sanitize(formData.amenityTitle).trim(),
+              amenityDescription: sanitize(formData.amenityDescription).trim(),
+              amenityLocation: sanitize(formData.amenityLocation).trim(),
+              amenityCapacity: clampNumber(formData.amenityCapacity, 1),
+              amenityAvailableTimes: sanitize(formData.amenityAvailableTimes).trim(),
+              amenityPrice: clampNumber(formData.amenityPrice, 0),
+              imageURLs: (formData.imageURLs || []).filter(isSafeUrl),
+            };
+
             const res = await fetch(`/api/amenitiesListing/update/${params.amenityID}`, {
                 method: "PUT",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(formData),
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify(payload),
             });
             const data = await res.json();
             setLoading(false);
             if (data.success === false) {
-                setError(data.message);
+                setError(data.message || "Failed to update amenity");
                 return;
             }
             navigate("/dashboard?tab=amenity");
         } catch (error) {
+            setLoading(false);
             setError("An error occurred while updating the amenity.");
-            console.log(error);
         }
     };
 
     const handleImageSubmit = () => {
-        if(files.length > 0 && files.length + formData.imageURLs.length < 7) {
-           setUploading(true);
-           setImageUploadError(false);
-           const promises = [];
-  
-           for (let i = 0; i < files.length; i++) {
-              promises.push(storeImage(files[i]));
-           }
-  
-           Promise.all(promises).then((urls) => {
-              setFormData({
-                 ...formData,
-                 imageURLs: formData.imageURLs.concat(urls)
-              })
-              setImageUploadError(false);
-              setUploading(false);
-           }).catch((err) => {
-              setImageUploadError('Image Upload failed (2mb max per Image)');
-              setUploading(false);
-           })
-        } else {
-           setImageUploadError('You can only upload 6 Images per listing')
-           setUploading(false);
+        if (!files || files.length === 0) {
+          setImageUploadError("Please choose at least one image to upload");
+          return;
         }
-     }
-  
-     const storeImage = async (file) => {
+        const total = files.length + formData.imageURLs.length;
+        if (total > MAX_IMAGES) {
+          setImageUploadError(`You can only upload ${MAX_IMAGES} images per listing`);
+          return;
+        }
+
+        const invalid = Array.from(files).find(
+          (f) => !IMAGE_TYPES.includes(f.type) || f.size > MAX_IMAGE_SIZE_BYTES
+        );
+        if (invalid) {
+          setImageUploadError("Image upload failed (allowed: JPG/PNG/WebP/GIF, max 2MB each)");
+          return;
+        }
+
+        setUploading(true);
+        setImageUploadError(false);
+        const promises = [];
+        for (let i = 0; i < files.length; i++) {
+          promises.push(storeImage(files[i]));
+        }
+
+        Promise.all(promises)
+          .then((urls) => {
+            const safeUrls = urls.filter(isSafeUrl);
+            setFormData((prev) => ({
+              ...prev,
+              imageURLs: prev.imageURLs.concat(safeUrls).slice(0, MAX_IMAGES),
+            }));
+            setImageUploadError(false);
+            setUploading(false);
+          })
+          .catch(() => {
+            setImageUploadError("Image Upload failed (2MB max per Image)");
+            setUploading(false);
+          });
+    };
+
+    const storeImage = async (file) => {
         return new Promise((resolve, reject) => {
-           const storage = getStorage(app);
-           const fileName = new Date().getTime() + file.name;
-           const storageRef = ref(storage, fileName);
-           const uploadTask = uploadBytesResumable(storageRef, file);
-           uploadTask.on(
+          try {
+            if (!IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_SIZE_BYTES) {
+              return reject(new Error("Invalid file"));
+            }
+            const storage = getStorage(app);
+            // random filename; avoid trusting user-provided file name
+            const rand = crypto && crypto.getRandomValues
+              ? [...crypto.getRandomValues(new Uint8Array(8))].map(b => b.toString(16).padStart(2, "0")).join("")
+              : Math.random().toString(16).slice(2);
+            const ext = (file.name && file.name.lastIndexOf(".") > -1) ? file.name.slice(file.name.lastIndexOf(".")) : "";
+            const fileName = `${Date.now()}_${rand}${ext}`;
+            const storageRef = ref(storage, fileName);
+            const metadata = { contentType: file.type };
+            const uploadTask = uploadBytesResumable(storageRef, file, metadata);
+            uploadTask.on(
               "state_changed",
-              (snapshot) => {
-                const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-                console.log(`Upload is ${progress}% done`);
-              },
-              (error) => {
-                reject(error);
-              },
+              () => {},
+              (error) => reject(error),
               () => {
-                getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-                  resolve(downloadURL);
-                })
+                getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => resolve(downloadURL));
               }
-            )
-        })
-     }
-  
-     const handleRemoveImage = (index) => {
+            );
+          } catch (err) {
+            reject(err);
+          }
+        });
+    };
+
+    const handleRemoveImage = (index) => {
         setFormData({
           ...formData,
           imageURLs: formData.imageURLs.filter((_, i) => i !== index),
@@ -194,6 +269,7 @@ const AmenityUpdate_05 = () => {
                             required
                             value={formData.amenityTitle}
                             onChange={handleChange}
+                            maxLength={60}
                         />
                     </div>   
                     <div>
@@ -203,6 +279,7 @@ const AmenityUpdate_05 = () => {
                             required
                             value={formData.amenityDescription}
                             onChange={handleChange}
+                            maxLength={2000}
                         />
                     </div>
                     <div>
@@ -213,6 +290,7 @@ const AmenityUpdate_05 = () => {
                             required
                             value={formData.amenityLocation}
                             onChange={handleChange}
+                            maxLength={120}
                         />
                     </div>
                     <div>
@@ -223,6 +301,8 @@ const AmenityUpdate_05 = () => {
                             required
                             value={formData.amenityCapacity}
                             onChange={handleChange}
+                            min={1}
+                            step={1}
                         />
                     </div>
                     <div>
@@ -233,6 +313,8 @@ const AmenityUpdate_05 = () => {
                             required
                             value={formData.amenityPrice}
                             onChange={handleChange}
+                            min={0}
+                            step={0.01}
                         />
                     </div>
                     <div>
@@ -243,6 +325,10 @@ const AmenityUpdate_05 = () => {
                             required
                             value={formData.amenityAvailableTimes}
                             onChange={handleChange}
+                            maxLength={120}
+                            pattern="^\s*\d{1,2}:[0-5]\d\s*[-–]\s*\d{1,2}:[0-5]\d\s*$"
+                            title="Use HH:MM-HH:MM (e.g., 09:00-17:00). Hyphen or en dash allowed."
+                            placeholder="e.g., 09:00-17:00"
                         />
                     </div>
                     <div className="flex flex-col gap-4 flex-1">
@@ -255,7 +341,7 @@ const AmenityUpdate_05 = () => {
                         {
                             formData.imageURLs.length > 0 && formData.imageURLs.map((url, index) => (
                                 <div key={`image-${index}`} className="flex justify-between p-3 border items-center">
-                                    <img src={url} alt={`listing image ${index}`} className='w-20 h-20 object-contain rounded-lg' />
+                                    <img src={isSafeUrl(url) ? url : ""} alt={`listing image ${index}`} className='w-20 h-20 object-contain rounded-lg' />
                                     <Button type="button" onClick={() => handleRemoveImage(index)} gradientDuoTone="pinkToOrange">Delete</Button>
                                 </div>
                             ))
